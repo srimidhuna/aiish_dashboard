@@ -1,0 +1,550 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma Schema — AIISH Newborn Hearing Screening Management System
+//
+// All primary keys are UUID.
+// Soft-delete pattern (deleted_at) on Baby and User — no hard deletes.
+// Screening.overall_result (outcome) is deliberately separate from
+// Baby.status (case workflow state) — do NOT merge these fields.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  audiologist
+  admin
+  doctor
+}
+
+/// Workflow state of a Baby case — separate from Screening.overall_result
+enum BabyStatus {
+  draft
+  completed
+  follow_up_required
+  under_evaluation
+  under_treatment
+  closed
+}
+
+/// Used for TEOAE, DPOAE, AABR fields in Screening
+enum ScreeningTestResult {
+  pass
+  refer
+  noisy
+  cnt // Could Not Test
+  not_done
+}
+
+/// Used for Screening.overall_result and Screening.boa_result (pass/refer only)
+enum PassReferResult {
+  pass
+  refer
+}
+
+/// Used for AudiologistAssessment reflex fields
+enum ReflexResult {
+  normal
+  abnormal
+}
+
+/// Degree of consanguinity in AudiologistAssessment
+enum ConsanguinityDegree {
+  first
+  second
+  third
+}
+
+/// Follow-up contact/visit type
+enum FollowUpType {
+  phone
+  regular
+  not_applicable
+}
+
+/// Geographic classification of baby's address
+enum Region {
+  urban
+  rural
+}
+
+/// Mode of delivery
+enum DeliveryType {
+  normal
+  caesarean
+  breech
+  home
+}
+
+/// Referral source at time of NBS registration
+enum ReferredBy {
+  pocd_staff
+  doctor
+  self
+  others
+}
+
+/// BPL/AAY/APL classification
+enum SocioEconomicStatus {
+  aay
+  bpl
+  apl
+}
+
+/// Parental education level
+enum EducationLevelParent {
+  illiterate
+  primary
+  high_school
+  graduate_and_above
+  others
+}
+
+/// Family religion
+enum Religion {
+  hindu
+  muslim
+  christian
+  others
+}
+
+/// Hospital directory status
+enum HospitalStatus {
+  active
+  inactive
+}
+
+/// Workflow status of a single Screening record (draft in progress, scheduled/due, completed)
+enum ScreeningStatus {
+  draft
+  scheduled
+  completed
+}
+
+/// Workflow status of a FollowUp
+enum FollowUpStatus {
+  scheduled
+  completed
+  missed
+  lost_to_followup
+  rescheduled
+}
+
+/// Risk category grouping for RiskCategory master table
+enum CategoryGroup {
+  perinatal
+  postnatal
+  family_history
+  other
+}
+
+/// Events recorded in PatientTimeline
+enum TimelineEvent {
+  registered
+  screened
+  follow_up_created
+  treatment_started
+  closed
+  other
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MASTER / GEOGRAPHY TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model State {
+  id   String @id @default(uuid())
+  name String @unique
+
+  districts District[]
+
+  @@map("states")
+}
+
+model District {
+  id      String @id @default(uuid())
+  name    String
+  stateId String @map("state_id")
+  state   State  @relation(fields: [stateId], references: [id])
+
+  hospitals Hospital[]
+  babies    Baby[]
+
+  @@unique([name, stateId])
+  @@map("districts")
+}
+
+model Hospital {
+  id         String   @id @default(uuid())
+  name       String
+  districtId String   @map("district_id")
+  district   District @relation(fields: [districtId], references: [id])
+
+  address       String?
+  contactPerson String?        @map("contact_person")
+  contactPhone  String?        @map("contact_phone")
+  status        HospitalStatus @default(active)
+
+  primaryAudiologistId String? @map("primary_audiologist_id")
+  primaryAudiologist   User?   @relation("HospitalPrimaryAudiologist", fields: [primaryAudiologistId], references: [id])
+
+  users  User[]
+  babies Baby[]
+
+  @@map("hospitals")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  hospitalId   String    @map("hospital_id")
+  hospital     Hospital  @relation(fields: [hospitalId], references: [id])
+  role         UserRole  @default(audiologist)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations for audit trail
+  babiesCreated                 Baby[]            @relation("BabyCreatedBy")
+  babiesDeleted                 Baby[]            @relation("BabyDeletedBy")
+  screenings                    Screening[]       @relation("ScreeningTestedBy")
+  screeningsAssigned            Screening[]       @relation("ScreeningAssignedAudiologist")
+  followUpsProvided             FollowUp[]        @relation("FollowUpProvider")
+  timelines                     PatientTimeline[]
+  auditLogs                     AuditLog[]
+  hospitalsAsPrimaryAudiologist Hospital[]        @relation("HospitalPrimaryAudiologist")
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STAFF (non-login personnel who conduct assessments)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Staff {
+  id           String    @id @default(uuid())
+  employeeId   String    @unique @map("employee_id")
+  fullName     String    @map("full_name")
+  gender       String    // 'male' | 'female' | 'other'
+  dateOfBirth  DateTime? @map("date_of_birth")
+  mobileNumber String?   @map("mobile_number")
+  email        String?
+  photoUrl     String?   @map("photo_url")
+
+  role              String?  // e.g. 'audiologist', 'doctor', 'nurse', 'technician', 'other'
+  designation       String?  // e.g. 'Senior Audiologist'
+  department        String?  // e.g. 'POCD'
+  qualification     String?  // e.g. 'M.Sc. Audiology'
+  licenseNumber     String?  @map("license_number")
+  yearsOfExperience Int?     @map("years_of_experience")
+
+  hospitalId String?   @map("hospital_id")
+  status     String    @default("active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("staff")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RISK CATEGORY & RECOMMENDATION TYPE (masters)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RiskCategory {
+  id            String        @id @default(uuid())
+  label         String        @unique
+  categoryGroup CategoryGroup @map("category_group")
+  sortOrder     Int           @default(0) @map("sort_order")
+
+  babyRiskFactors BabyRiskFactor[]
+
+  @@map("risk_categories")
+}
+
+model RecommendationType {
+  id    String @id @default(uuid())
+  label String @unique
+
+  babyRecommendations BabyRecommendation[]
+
+  @@map("recommendation_types")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BABY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Baby {
+  id             String  @id @default(uuid())
+  mrNumber       String? @map("mr_number")
+  pocdNumber     String? @map("pocd_number")
+  uniqueMotherId String? @map("unique_mother_id")
+
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  dob         DateTime
+  timeOfBirth String?  @map("time_of_birth")
+  gender      String // 'male' | 'female' | 'other' — kept String for flexibility
+
+  birthWeightGrams    Int?    @map("birth_weight_grams")
+  gestationalAgeWeeks Int?    @map("gestational_age_weeks")
+  placeOfBirth        String? @map("place_of_birth")
+
+  motherName String  @map("mother_name")
+  fatherName String? @map("father_name")
+
+  address        String?
+  taluk          String?
+  pinCode        String?  @map("pin_code")
+  parentDistrict String?  @map("parent_district")
+  parentState    String?  @map("parent_state")
+  districtId String   @map("district_id")
+  district   District @relation(fields: [districtId], references: [id])
+  hospitalId String   @map("hospital_id")
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  // Note: No state_id on Baby — derive via baby.district.state
+
+  department        String? @map("department")
+  doctorName        String? @map("doctor_name")
+  assessingStaffId  String? @map("assessing_staff_id")
+  assessingStaffEmployeeId String? @map("assessing_staff_employee_id")
+  assessingStaffName       String? @map("assessing_staff_name")
+
+  phone1 String? @map("phone_1")
+  whatsappNumber String? @map("whatsapp_number")
+  email  String?
+  phone2 String? @map("phone_2")
+
+  referredBy      ReferredBy? @map("referred_by")
+  referredByOther String?     @map("referred_by_other")
+  nbsCentre       String?     @map("nbs_centre")
+
+  region              Region?
+  educationLevel      EducationLevelParent? @map("education_level")
+  religion            Religion?
+  socioEconomicStatus SocioEconomicStatus?  @map("socio_economic_status")
+
+  deliveryType DeliveryType? @map("delivery_type")
+  noOfSiblings Int?          @map("no_of_siblings")
+
+  remarks String?
+
+  /// Case workflow status — deliberately separate from Screening.overall_result
+  status BabyStatus @default(draft)
+
+  createdById String    @map("created_by")
+  createdBy   User      @relation("BabyCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by")
+  deletedBy   User?     @relation("BabyDeletedBy", fields: [deletedById], references: [id])
+
+  // Relations
+  riskFactors BabyRiskFactor[]
+  assessment  AudiologistAssessment?
+  screenings  Screening[]
+  followUps   FollowUp[]
+  timelines   PatientTimeline[]
+
+  @@index([deletedAt, createdAt])
+  @@index([districtId])
+  @@index([hospitalId])
+  @@map("babies")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BABY RISK FACTOR (join table)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BabyRiskFactor {
+  id             String       @id @default(uuid())
+  babyId         String       @map("baby_id")
+  baby           Baby         @relation(fields: [babyId], references: [id])
+  riskCategoryId String       @map("risk_category_id")
+  riskCategory   RiskCategory @relation(fields: [riskCategoryId], references: [id])
+
+  @@unique([babyId, riskCategoryId])
+  @@map("baby_risk_factors")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIOLOGIST ASSESSMENT (1:1 with Baby)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AudiologistAssessment {
+  id     String @id @default(uuid())
+  babyId String @unique @map("baby_id")
+  baby   Baby   @relation(fields: [babyId], references: [id])
+
+  familyHistoryHearingLoss Boolean              @default(false) @map("family_history_hearing_loss")
+  consanguinityDegree      ConsanguinityDegree? @map("consanguinity_degree")
+  caregiverConcern         Boolean              @default(false) @map("caregiver_concern")
+
+  // Neonatal reflex assessments
+  reflexMoro     ReflexResult? @map("reflex_moro")
+  reflexRooting  ReflexResult? @map("reflex_rooting")
+  reflexBabinski ReflexResult? @map("reflex_babinski")
+  reflexPalmar   ReflexResult? @map("reflex_palmar")
+  reflexPlantar  ReflexResult? @map("reflex_plantar")
+
+  @@map("audiologist_assessments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCREENING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Screening {
+  id     String @id @default(uuid())
+  babyId String @map("baby_id")
+  baby   Baby   @relation(fields: [babyId], references: [id])
+
+  /// Workflow status of this screening record — separate from overallResult (the outcome)
+  status  ScreeningStatus @default(draft)
+  dueDate DateTime?       @map("due_date")
+
+  assignedAudiologistId String? @map("assigned_audiologist_id")
+  assignedAudiologist   User?   @relation("ScreeningAssignedAudiologist", fields: [assignedAudiologistId], references: [id])
+
+  entFindings String? @map("ent_findings")
+
+  // BOA (Behavioral Observation Audiometry) — widened to the full test-result vocabulary
+  // (paper form offers Pass/Refer/CNT/Not done for BOA)
+  boaResult ScreeningTestResult? @map("boa_result")
+
+  // TEOAE (Transient Evoked Otoacoustic Emissions)
+  teoaeRight ScreeningTestResult? @map("teoae_right")
+  teoaeLeft  ScreeningTestResult? @map("teoae_left")
+
+  // DPOAE (Distortion Product Otoacoustic Emissions)
+  dpoaeRight ScreeningTestResult? @map("dpoae_right")
+  dpoaeLeft  ScreeningTestResult? @map("dpoae_left")
+
+  // AABR Pass 1
+  aabr1Right ScreeningTestResult? @map("aabr1_right")
+  aabr1Left  ScreeningTestResult? @map("aabr1_left")
+
+  // AABR Pass 2
+  aabr2Right ScreeningTestResult? @map("aabr2_right")
+  aabr2Left  ScreeningTestResult? @map("aabr2_left")
+
+  /// Outcome of this screening visit — separate from Baby.status (case workflow)
+  overallResult PassReferResult? @map("overall_result")
+
+  remarks    String?
+  testedById String   @map("tested_by")
+  testedBy   User     @relation("ScreeningTestedBy", fields: [testedById], references: [id])
+  testedAt   DateTime @map("tested_at")
+
+  @@index([babyId])
+  @@index([testedAt])
+  @@index([status])
+  @@map("screenings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOLLOW UP
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FollowUp {
+  id     String @id @default(uuid())
+  babyId String @map("baby_id")
+  baby   Baby   @relation(fields: [babyId], references: [id])
+
+  followUpType FollowUpType @map("follow_up_type")
+
+  provisionalDiagnosisRight String? @map("provisional_diagnosis_right")
+  provisionalDiagnosisLeft  String? @map("provisional_diagnosis_left")
+
+  status        FollowUpStatus @default(scheduled)
+  scheduledDate DateTime       @map("scheduled_date")
+  actualDate    DateTime?      @map("actual_date")
+  notes         String?
+  nextSteps     String?        @map("next_steps")
+
+  providerId String @map("provider_id")
+  provider   User   @relation("FollowUpProvider", fields: [providerId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  recommendations BabyRecommendation[]
+
+  @@index([babyId])
+  @@index([scheduledDate])
+  @@index([status])
+  @@map("follow_ups")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BABY RECOMMENDATION (join table: FollowUp ↔ RecommendationType)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BabyRecommendation {
+  id                   String             @id @default(uuid())
+  followUpId           String             @map("follow_up_id")
+  followUp             FollowUp           @relation(fields: [followUpId], references: [id])
+  recommendationTypeId String             @map("recommendation_type_id")
+  recommendationType   RecommendationType @relation(fields: [recommendationTypeId], references: [id])
+
+  @@unique([followUpId, recommendationTypeId])
+  @@map("baby_recommendations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATIENT TIMELINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PatientTimeline {
+  id     String @id @default(uuid())
+  babyId String @map("baby_id")
+  baby   Baby   @relation(fields: [babyId], references: [id])
+
+  event       TimelineEvent
+  description String?
+
+  createdById String   @map("created_by")
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("patient_timelines")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String @id @default(uuid())
+  tableName String @map("table_name")
+  recordId  String @map("record_id")
+
+  changedById String @map("changed_by")
+  changedBy   User   @relation(fields: [changedById], references: [id])
+
+  // JSON diff — stored as Json (maps to jsonb in PostgreSQL)
+  oldValue Json? @map("old_value")
+  newValue Json? @map("new_value")
+
+  changedAt DateTime @default(now()) @map("changed_at")
+
+  @@map("audit_logs")
+}

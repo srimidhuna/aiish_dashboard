@@ -1,0 +1,46 @@
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build outputs ───────────────────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ─── Environment files ───────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# keep .env.example committed
+
+# ─── Prisma ──────────────────────────────────────────────────────────────────
+# NOTE: prisma/migrations/ must be committed — it is applied by docker-compose
+# on startup via `prisma migrate deploy`. Do NOT gitignore it.
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── Docker ──────────────────────────────────────────────────────────────────
+.docker/
+
+# ─── Test coverage ───────────────────────────────────────────────────────────
+coverage/

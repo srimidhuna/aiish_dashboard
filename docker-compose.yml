@@ -1,0 +1,96 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AIISH Newborn Hearing Screening — Docker Compose
+#
+# Services:
+#   postgres  — PostgreSQL 16 database
+#   backend   — NestJS API (auto-migrates + seeds on startup)
+#   frontend  — React + Vite dev server (added in Prompt 1B)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: aiish_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── NestJS Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aiish_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+    ports:
+      - '${PORT}:${PORT}'
+    depends_on:
+      postgres:
+        # Backend waits for postgres to pass its healthcheck before starting.
+        # This ensures migrations run against a fully-ready database.
+        condition: service_healthy
+    healthcheck:
+      # Hits the unversioned /health endpoint (no auth required).
+      # docker-compose up --wait will block until this passes.
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:${PORT}/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── React + Vite Frontend ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aiish_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # VITE_API_URL must be browser-accessible (localhost), not the Docker
+      # service name, because Vite serves a client-side SPA that runs in the
+      # user's browser — not on the Docker network.
+      VITE_API_URL: ${VITE_API_URL}
+      NODE_ENV: ${NODE_ENV}
+    ports:
+      - '3000:3000'
+    depends_on:
+      backend:
+        # Frontend waits for backend to be healthy before starting dev server.
+        condition: service_healthy
+    volumes:
+      # Mount source for hot-reload in development
+      - ./frontend:/app
+      - /app/node_modules
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local

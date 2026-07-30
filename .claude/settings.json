@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker info *)",
+      "Bash(tasklist //FI \"IMAGENAME eq Docker Desktop.exe\")",
+      "Bash(wsl -l -v)",
+      "PowerShell(Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='UsedGB';E={[math]::Round\\($_.Used/1GB,2\\)}}, @{N='FreeGB';E={[math]::Round\\($_.Free/1GB,2\\)}})",
+      "Bash(docker system *)",
+      "Bash(grep -o '\"dataRoot\"[^,]*\\\\|\"diskLocation\"[^,]*\\\\|\"disk[A-Za-z]*\"[^,]*' \"/c/Users/Midhuna/AppData/Roaming/Docker/settings-store.json\" 2>&1)",
+      "Read(//c/Users/Midhuna/AppData/Roaming/Docker/**)",
+      "PowerShell(Get-Process \"Docker Desktop\",\"com.docker.backend\",\"com.docker.build\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(wsl --shutdown)",
+      "PowerShell(wsl -l -v)",
+      "Bash(break)",
+      "Bash(docker exec *)",
+      "Bash(DATABASE_URL=\"postgresql://aiish_user:aiish_secret@localhost:5432/aiish_db\" npm run seed)",
+      "Bash(DATABASE_URL=\"postgresql://aiish_user:aiish_secret@localhost:5432/aiish_db\" npx prisma migrate status)",
+      "Bash(DATABASE_URL=\"postgresql://aiish_user:aiish_secret@localhost:5432/aiish_db\" npx prisma migrate dev --name sync_schema_drift)",
+      "Bash(DATABASE_URL=\"postgresql://aiish_user:aiish_secret@localhost:5432/aiish_db\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"postgresql://aiish_user:aiish_secret@localhost:5432/aiish_db\" npx prisma db push --accept-data-loss)"
+    ]
+  }
+}
