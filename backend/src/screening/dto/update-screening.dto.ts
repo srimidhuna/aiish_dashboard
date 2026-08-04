@@ -7,6 +7,7 @@ const STATUS = ['draft', 'scheduled', 'completed'];
 
 export class UpdateScreeningDto {
   @ApiPropertyOptional({ enum: STATUS }) @IsOptional() @IsIn(STATUS) status?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() type?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() assignedAudiologistId?: string;
 

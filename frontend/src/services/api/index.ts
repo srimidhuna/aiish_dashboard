@@ -11,7 +11,7 @@ export { districtsService } from './districtsService';
 export { audiologistsService } from './audiologistsService';
 export { mastersService } from './mastersService';
 export { dashboardService } from './dashboardService';
-export type { DashboardOverview, Notification, HighRiskBaby } from './dashboardService';
+export type { DashboardOverview, Notification, HighRiskBaby, DateFilterParams } from './dashboardService';
 export { analyticsService } from './analyticsService';
 export type {
   AnalyticsPayload,

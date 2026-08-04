@@ -131,7 +131,9 @@ export interface Child {
   nbsCentre?: string;
   region?: Region;
   educationLevel?: EducationLevel;
+  educationLevelOther?: string;
   religion?: Religion;
+  religionOther?: string;
   socioEconomicStatus?: SocioEconomicStatus;
   deliveryType?: DeliveryType;
   noOfSiblings?: number;
@@ -154,6 +156,7 @@ export interface Screening {
   date: string; // maps to backend testedAt
 
   status: ScreeningStatus;
+  type?: 'initial' | 'rescreening';
   dueDate?: string;
   assignedAudiologistId?: string;
 

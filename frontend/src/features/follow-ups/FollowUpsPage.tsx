@@ -12,7 +12,7 @@ import { StatusBadge } from '../../components/shared/StatusBadge';
 import { EmptyState } from '../../components/shared/EmptyState';
 
 export default function FollowUpsPage() {
-  const [activeTab, setActiveTab] = useState<'Upcoming' | 'Completed' | 'Missed' | 'Rescheduled' | 'Message' | 'Call'>(
+  const [activeTab, setActiveTab] = useState<'Upcoming' | 'Completed' | 'Missed' | 'Message' | 'Call'>(
     'Upcoming',
   );
   
@@ -73,10 +73,9 @@ export default function FollowUpsPage() {
 
   const filteredFollowUps = followUps
     ?.filter((f: FollowUp) => {
-      if (activeTab === 'Upcoming') return f.status === 'scheduled';
+      if (activeTab === 'Upcoming') return f.status === 'scheduled' || f.status === 'rescheduled';
       if (activeTab === 'Completed') return f.status === 'completed';
       if (activeTab === 'Missed') return f.status === 'missed' || f.status === 'lost_to_followup';
-      if (activeTab === 'Rescheduled') return f.status === 'rescheduled';
       
       const child = getChild(f.childId);
       if (activeTab === 'Message') return !!child?.whatsappNumber;
@@ -215,7 +214,7 @@ export default function FollowUpsPage() {
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-end sm:items-center">
         <div className="border-b flex-grow w-full">
           <nav className="-mb-px flex space-x-8 overflow-x-auto">
-            {['Upcoming', 'Completed', 'Missed', 'Rescheduled', 'Message', 'Call'].map((tab) => (
+            {['Upcoming', 'Completed', 'Missed', 'Message', 'Call'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
@@ -321,7 +320,7 @@ export default function FollowUpsPage() {
                         <StatusBadge kind="followUpStatus" value={f.status} />
                       </td>
                       <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                        {f.status === 'scheduled' && (
+                        {(f.status === 'scheduled' || f.status === 'rescheduled') && (
                           <Button
                             variant="outline"
                             size="sm"

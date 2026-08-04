@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { FormSection } from './FormSection';
 import { EarResultSelector } from './EarResultSelector';
+import { TestHeader } from './TestHeader';
 import { Calendar, AlertCircle, CheckCircle2, ChevronRight, Clock } from 'lucide-react';
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -137,32 +138,6 @@ function ScheduleModal({ open, onClose, date, onDateChange, onConfirm }: Schedul
   );
 }
 
-// ─── Section header with status badge ────────────────────────────────────────
-function TestHeader({
-  step, title, status,
-}: { step: number; title: string; status: 'active' | 'pass' | 'fail' }) {
-  return (
-    <div className="flex items-center justify-between mb-1">
-      <div className="flex items-center gap-2">
-        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-          {step}
-        </span>
-        <span className="text-sm font-semibold text-foreground">{title}</span>
-      </div>
-      {status === 'pass' && (
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">
-          <CheckCircle2 className="h-3 w-3" /> PASS — No further tests needed
-        </span>
-      )}
-      {status === 'fail' && (
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800">
-          <AlertCircle className="h-3 w-3" /> Refer — Next test required
-        </span>
-      )}
-    </div>
-  );
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ScreeningStepProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,39 +163,46 @@ export function ScreeningStep({
   setShowScheduleModal,
 }: ScreeningStepProps) {
   const boa       = watch('boaResult')   as string | undefined;
+  const oaeTestSelection = watch('oaeTestSelection') as string | undefined;
   const teoaeR    = watch('teoaeRight')  as string | undefined;
   const teoaeL    = watch('teoaeLeft')   as string | undefined;
   const dpoaeR    = watch('dpoaeRight')  as string | undefined;
   const dpoaeL    = watch('dpoaeLeft')   as string | undefined;
   const aabr1R    = watch('aabr1Right')  as string | undefined;
   const aabr1L    = watch('aabr1Left')   as string | undefined;
-  const aabr2R    = watch('aabr2Right')  as string | undefined;
-  const aabr2L    = watch('aabr2Left')   as string | undefined;
 
   // Cascade visibility rules
   const boaPassed     = boa === 'pass';
-  const showTeoae     = isFailed(boa);
+  
+  const showTeoae     = oaeTestSelection === 'TEOAE';
+  const showDpoae     = oaeTestSelection === 'DPOAE';
+  
   const teoaePassed   = bothEarsPassed(teoaeR, teoaeL);
-  const showDpoae     = showTeoae && anyEarFailed(teoaeR, teoaeL);
   const dpoaePassed   = bothEarsPassed(dpoaeR, dpoaeL);
-  const showAabr1     = showDpoae && anyEarFailed(dpoaeR, dpoaeL);
+  const oaePassed     = showTeoae ? teoaePassed : (showDpoae ? dpoaePassed : false);
+  const oaeFailed     = showTeoae ? anyEarFailed(teoaeR, teoaeL) : (showDpoae ? anyEarFailed(dpoaeR, dpoaeL) : false);
+
+  const showAabr1     = oaeFailed;
   const aabr1Passed   = bothEarsPassed(aabr1R, aabr1L);
-  const showAabr2     = showAabr1 && anyEarFailed(aabr1R, aabr1L);
-  const allFailed     = showAabr2 && anyEarFailed(aabr2R, aabr2L);
+  const allFailed     = showAabr1 && anyEarFailed(aabr1R, aabr1L);
 
   // Auto-set overallResult from the cascade
   useEffect(() => {
-    if (boaPassed || teoaePassed || dpoaePassed || aabr1Passed || bothEarsPassed(aabr2R, aabr2L)) {
+    if (oaePassed || aabr1Passed) {
       setValue('overallResult', 'pass');
     } else if (allFailed) {
       setValue('overallResult', 'refer');
     }
-  }, [boaPassed, teoaePassed, dpoaePassed, aabr1Passed, aabr2R, aabr2L, allFailed, setValue]);
+  }, [oaePassed, aabr1Passed, allFailed, setValue]);
 
-  // Show schedule modal automatically when all tests fail
+  // Auto-schedule next-day rescreening when all tests fail
   useEffect(() => {
-    if (allFailed) setShowScheduleModal(true);
-  }, [allFailed, setShowScheduleModal]);
+    if (allFailed && !followUpDate) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setFollowUpDate(tomorrow.toISOString().split('T')[0]);
+    }
+  }, [allFailed, followUpDate, setFollowUpDate]);
 
   // Clear downstream fields when a higher test passes (prevents stale data)
   useEffect(() => {
@@ -232,41 +214,23 @@ export function ScreeningStep({
   useEffect(() => {
     if (!showAabr1) { setValue('aabr1Right', undefined); setValue('aabr1Left', undefined); }
   }, [showAabr1, setValue]);
-  useEffect(() => {
-    if (!showAabr2) { setValue('aabr2Right', undefined); setValue('aabr2Left', undefined); }
-  }, [showAabr2, setValue]);
 
   // Progress bar badges
   const boaStatus   = !boa ? 'active' : boa === 'pass' ? 'pass' : 'fail';
-  const teoaeStatus = !showTeoae ? 'skipped' : teoaePassed ? 'pass' : (teoaeR || teoaeL) ? 'fail' : 'active';
-  const dpoaeStatus = !showDpoae ? 'skipped' : dpoaePassed ? 'pass' : (dpoaeR || dpoaeL) ? 'fail' : 'active';
+  const oaeStatus   = !oaeTestSelection ? 'active' : oaePassed ? 'pass' : oaeFailed ? 'fail' : 'active';
   const aabr1Status = !showAabr1 ? 'skipped' : aabr1Passed ? 'pass' : (aabr1R || aabr1L) ? 'fail' : 'active';
-  const aabr2Status = !showAabr2 ? 'skipped' : bothEarsPassed(aabr2R, aabr2L) ? 'pass' : (aabr2R || aabr2L) ? 'fail' : 'active';
 
   return (
     <div className="space-y-5">
-      {/* ── Schedule modal (shown when all tests fail) ── */}
-      <ScheduleModal
-        open={showScheduleModal}
-        onClose={() => setShowScheduleModal(false)}
-        date={followUpDate}
-        onDateChange={setFollowUpDate}
-        onConfirm={() => setShowScheduleModal(false)}
-      />
-
       {/* ── Progress strip ── */}
       <div className="rounded-xl bg-muted/50 border border-border px-4 py-3">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Test Cascade Progress</p>
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Initial Screening Progress</p>
         <div className="flex flex-wrap gap-2">
           <StepBadge label="BOA" status={boaStatus as StepBadgeProps['status']} />
           <span className="text-muted-foreground/50 self-center">→</span>
-          <StepBadge label="TEOAE" status={teoaeStatus as StepBadgeProps['status']} />
-          <span className="text-muted-foreground/50 self-center">→</span>
-          <StepBadge label="DPOAE" status={dpoaeStatus as StepBadgeProps['status']} />
+          <StepBadge label="OAE" status={oaeStatus as StepBadgeProps['status']} />
           <span className="text-muted-foreground/50 self-center">→</span>
           <StepBadge label="AABR 1st" status={aabr1Status as StepBadgeProps['status']} />
-          <span className="text-muted-foreground/50 self-center">→</span>
-          <StepBadge label="AABR 2nd" status={aabr2Status as StepBadgeProps['status']} />
         </div>
       </div>
 
@@ -286,14 +250,9 @@ export function ScreeningStep({
         <div className="px-5 py-3.5 border-b border-border/50">
           <TestHeader
             step={1}
-            title="BOA — Behavioral Observation Audiometry"
+            title="BOA — Behavioral Observation Audiometry (Optional)"
             status={!boa ? 'active' : boa === 'pass' ? 'pass' : 'fail'}
           />
-          {boaPassed && (
-            <p className="text-xs text-emerald-600 mt-1">
-              ✅ BOA passed — no further screening tests are required for this visit.
-            </p>
-          )}
         </div>
         <div className="px-5 py-4">
           <EarResultSelector
@@ -305,12 +264,36 @@ export function ScreeningStep({
         </div>
       </div>
 
-      {/* ── STEP 2: TEOAE (shown only when BOA fails) ── */}
+      {/* ── STEP 2: OAE Selection ── */}
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border/50">
+          <TestHeader
+            step={2}
+            title="Select OAE Test"
+            status={oaeTestSelection ? 'pass' : 'active'}
+          />
+        </div>
+        <div className="px-5 py-4">
+          <label className="text-sm font-medium mb-3 block">Choose the OAE test to perform: *</label>
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" value="TEOAE" {...register('oaeTestSelection')} className="w-4 h-4 text-indigo-600 border-border" />
+              <span className="text-sm font-medium">TEOAE</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" value="DPOAE" {...register('oaeTestSelection')} className="w-4 h-4 text-indigo-600 border-border" />
+              <span className="text-sm font-medium">DPOAE</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* ── STEP 3: TEOAE (shown only when TEOAE is selected) ── */}
       {showTeoae && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="px-5 py-3.5 border-b border-border/50">
             <TestHeader
-              step={2}
+              step={3}
               title="TEOAE — Transient Evoked Otoacoustic Emissions"
               status={!teoaeR && !teoaeL ? 'active' : teoaePassed ? 'pass' : 'fail'}
             />
@@ -378,45 +361,13 @@ export function ScreeningStep({
         </div>
       )}
 
-      {/* ── STEP 5: AABR 2nd (shown only when both AABR 1st ears fail) ── */}
-      {showAabr2 && (
-        <div className="rounded-xl border border-orange-200/50 dark:border-orange-900/30 bg-card shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="px-5 py-3.5 border-b border-orange-200/50 dark:border-orange-900/30 bg-orange-50/50 dark:bg-orange-900/10">
-            <TestHeader
-              step={5}
-              title="AABR — 2nd Screening (Final)"
-              status={!aabr2R && !aabr2L ? 'active' : bothEarsPassed(aabr2R, aabr2L) ? 'pass' : 'fail'}
-            />
-            <p className="text-[11px] text-orange-600 mt-1">
-              ⚠️ This is the final test in the cascade. If any ear fails, a follow-up visit must be scheduled.
-            </p>
-          </div>
-          <div className="px-5 py-4 grid grid-cols-6 gap-4">
-            <div className="col-span-3">
-              <EarResultSelector
-                register={register}
-                name="aabr2Right"
-                label="Right Ear"
-                options={['pass', 'refer', 'cnt', 'not_done']}
-              />
-            </div>
-            <div className="col-span-3">
-              <EarResultSelector
-                register={register}
-                name="aabr2Left"
-                label="Left Ear"
-                options={['pass', 'refer', 'cnt', 'not_done']}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* ── Overall result (auto-set, read-only display) ── */}
       {boa && (
         <div className="rounded-xl border border-border bg-card shadow-sm px-5 py-4">
           <p className="text-sm font-semibold text-foreground mb-2">Overall Screening Result</p>
-          {boaPassed || teoaePassed || dpoaePassed || aabr1Passed || bothEarsPassed(aabr2R, aabr2L) ? (
+          {oaePassed || aabr1Passed ? (
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">PASS</span>
@@ -425,29 +376,13 @@ export function ScreeningStep({
             <div className="flex items-center gap-4 flex-wrap">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800">
                 <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <span className="text-sm font-bold text-red-700 dark:text-red-300">REFER — Follow-up required</span>
+                <span className="text-sm font-bold text-red-700 dark:text-red-300">REFER — Re-Screening required</span>
               </div>
-              {followUpDate ? (
+              {followUpDate && (
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
                   <Calendar className="h-4 w-4" />
-                  Follow-up: {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  <button
-                    type="button"
-                    onClick={() => setShowScheduleModal(true)}
-                    className="ml-1 text-xs underline"
-                  >
-                    Change
-                  </button>
+                  Re-Screening: {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowScheduleModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors"
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                  Schedule Follow-up Visit
-                </button>
               )}
             </div>
           ) : (

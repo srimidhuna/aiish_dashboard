@@ -12,6 +12,7 @@ export interface ScreeningFilters {
   dateTo?: string;
   childId?: string;
   result?: 'pass' | 'refer';
+  type?: string;
 }
 
 export const screeningsService = {

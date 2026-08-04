@@ -80,4 +80,9 @@ export class CreateStaffDto {
   @IsOptional()
   @IsString()
   hospitalId?: string;
+
+  @ApiPropertyOptional({ example: '123 Main St' })
+  @IsOptional()
+  @IsString()
+  address?: string;
 }

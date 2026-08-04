@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Screening } from '../../types';
 import { childrenService, mastersService, screeningsService } from '../../services/api';
 import { staffService } from '../../services/api/staffService';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -14,9 +15,11 @@ import { FormCard } from '../../components/forms/FormCard';
 import { FormStepper } from '../../components/forms/FormStepper';
 import { RiskFactorChecklist } from '../../components/forms/RiskFactorChecklist';
 import { ReflexSelector } from '../../components/forms/ReflexSelector';
+import { CreatableAutocomplete } from '../../components/ui/CreatableAutocomplete';
 import type { LocationFilterValue } from '../../components/shared/LocationFilter';
 import { useDefaultLocationFilters } from '../../hooks/useDefaultLocationFilters';
 import { cn } from '../../lib/utils';
+import { getDistrictsForState, getTaluksForDistrict, INDIA_STATES } from '../../lib/locationData';
 import { ScreeningStep } from '../../components/forms/ScreeningStep';
 
 const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done']);
@@ -63,14 +66,16 @@ const schema = z.object({
   educationLevel: z
     .enum(['illiterate', 'primary', 'high_school', 'graduate_and_above', 'others'])
     .optional(),
+  educationLevelOther: z.string().optional(),
   religion: z.enum(['hindu', 'muslim', 'christian', 'others']).optional(),
+  religionOther: z.string().optional(),
   deliveryType: z.enum(['normal', 'caesarean', 'breech', 'home']).optional(),
   noOfSiblings: z.coerce.number().min(0).optional(),
 
   riskFactorIds: z.array(z.string()).default([]),
 
   familyHistoryHearingLoss: z.boolean().default(false),
-  consanguinityDegree: z.enum(['first', 'second', 'third']).optional(),
+  consanguinityDegree: z.enum(['first', 'second', 'third']).optional().or(z.literal('')),
   caregiverConcern: z.boolean().default(false),
   reflexMoro: z.enum(['normal', 'abnormal']).optional(),
   reflexRooting: z.enum(['normal', 'abnormal']).optional(),
@@ -79,16 +84,17 @@ const schema = z.object({
   reflexPlantar: z.enum(['normal', 'abnormal']).optional(),
 
   entFindings: z.string().optional(),
-  boaResult: passReferOnly.optional(),
-  teoaeRight: testResult.optional(),
-  teoaeLeft: testResult.optional(),
-  dpoaeRight: testResult.optional(),
-  dpoaeLeft: testResult.optional(),
-  aabr1Right: passReferOnly.optional(),
-  aabr1Left: passReferOnly.optional(),
-  aabr2Right: passReferOnly.optional(),
-  aabr2Left: passReferOnly.optional(),
-  overallResult: z.enum(['pass', 'refer']).optional(),
+  boaResult: passReferOnly.optional().or(z.literal('')),
+  oaeTestSelection: z.enum(['TEOAE', 'DPOAE']).optional().or(z.literal('')),
+  teoaeRight: testResult.optional().or(z.literal('')),
+  teoaeLeft: testResult.optional().or(z.literal('')),
+  dpoaeRight: testResult.optional().or(z.literal('')),
+  dpoaeLeft: testResult.optional().or(z.literal('')),
+  aabr1Right: passReferOnly.optional().or(z.literal('')),
+  aabr1Left: passReferOnly.optional().or(z.literal('')),
+  aabr2Right: passReferOnly.optional().or(z.literal('')),
+  aabr2Left: passReferOnly.optional().or(z.literal('')),
+  overallResult: z.enum(['pass', 'refer']).optional().or(z.literal('')),
 
   remarks: z.string().optional(),
 });
@@ -100,7 +106,7 @@ const STEPS = [
   { id: 'parent', label: 'Parent Info' },
   { id: 'sociodemo', label: 'Socio-Demographics' },
   { id: 'risk', label: 'High-Risk Register' },
-  { id: 'assessment', label: "Audiologist's Assessment" },
+  { id: 'assessment', label: "Reflex Assessment" },
   { id: 'screening', label: 'Screening' },
   { id: 'notes', label: 'Additional Notes' },
   { id: 'review', label: 'Review & Confirm' },
@@ -140,6 +146,7 @@ export default function RegisterChildPage() {
     getValues,
     reset,
     watch,
+    control,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -151,8 +158,41 @@ export default function RegisterChildPage() {
   });
 
   const riskFactorIds = watch('riskFactorIds');
+  const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
+  const consanguinityDegree = watch('consanguinityDegree');
   const referredByValue = watch('referredBy');
+  const religionValue = watch('religion');
+  const educationLevelValue = watch('educationLevel');
   const dateOfBirthValue = watch('dateOfBirth');
+  const parentState = watch('parentState');
+  const parentDistrict = watch('parentDistrict');
+
+  // Store the previous state to only clear when state actually changes
+  const [prevVal, setPrevVal] = useState({ state: parentState });
+
+  useEffect(() => {
+    if (parentState !== prevVal.state) {
+      // State changed, clear district and taluk
+      setValue('parentDistrict', undefined);
+      setValue('taluk', undefined);
+      setPrevVal({ state: parentState });
+    }
+  }, [parentState, prevVal, setValue]);
+
+
+
+  useEffect(() => {
+    const hasRiskFactor =
+      (riskFactorIds && riskFactorIds.length > 0) ||
+      familyHistoryHearingLoss ||
+      (consanguinityDegree && consanguinityDegree !== '');
+
+    if (hasRiskFactor) {
+      setHrrFindings('hrr');
+    } else {
+      setHrrFindings('no_hrr');
+    }
+  }, [riskFactorIds, familyHistoryHearingLoss, consanguinityDegree]);
 
   const { data: staffList = [] } = useQuery({
     queryKey: ['staff'],
@@ -276,9 +316,9 @@ export default function RegisterChildPage() {
         dpoaeLeft: latestScreening?.dpoaeLeft ?? '',
         aabr1Right: latestScreening?.aabr1Right ?? '',
         aabr1Left: latestScreening?.aabr1Left ?? '',
-        aabr2Right: latestScreening?.aabr2Right ?? '',
-        aabr2Left: latestScreening?.aabr2Left ?? '',
         overallResult: latestScreening?.overallResult ?? '',
+        educationLevelOther: editChild.educationLevelOther ?? '',
+        religionOther: editChild.religionOther ?? '',
       } as any);
       if (editChild.hospitalOfBirthId) {
         setLocation({
@@ -310,12 +350,11 @@ export default function RegisterChildPage() {
         dpoaeLeft,
         aabr1Right,
         aabr1Left,
-        aabr2Right,
-        aabr2Left,
         overallResult,
         // Strip form-only fields that don't belong in the baby payload
         audiologistId: _audiologistId,
         guardianPhotoUrl: _guardianPhotoUrl,
+        oaeTestSelection: _oaeTestSelection,
         ...rest
       } = data;
 
@@ -334,6 +373,11 @@ export default function RegisterChildPage() {
       const selectedStaff = cleanRest.assessingStaffId
         ? staffList.find((s) => s.id === cleanRest.assessingStaffId)
         : undefined;
+
+      // Validate followUpDate
+      if (overallResult === 'refer' && !followUpDate) {
+        throw new Error('Please schedule a Re-Screening visit date before submitting.');
+      }
 
       const payload = {
         ...cleanRest,
@@ -369,25 +413,41 @@ export default function RegisterChildPage() {
           
           const screeningData = {
             childId: editId,
+            type: 'initial',
             status: 'completed' as const,
-            entFindings,
-            boaResult: boaResult as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            teoaeRight,
-            teoaeLeft,
-            dpoaeRight,
-            dpoaeLeft,
-            aabr1Right: aabr1Right as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            aabr1Left: aabr1Left as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            aabr2Right: aabr2Right as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            aabr2Left: aabr2Left as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            overallResult,
-            remarks: data.remarks,
-          };
+            entFindings: entFindings || undefined,
+            boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
+            teoaeRight: teoaeRight || undefined,
+            teoaeLeft: teoaeLeft || undefined,
+            dpoaeRight: dpoaeRight || undefined,
+            dpoaeLeft: dpoaeLeft || undefined,
+            aabr1Right: (aabr1Right || undefined) as any,
+            aabr1Left: (aabr1Left || undefined) as any,
+            overallResult: overallResult || undefined,
+            remarks: data.remarks || undefined,
+          } as Partial<Screening>;
 
           if (existingScreening) {
-            await screeningsService.update(existingScreening.id, screeningData);
+            const { childId, ...updateData } = screeningData;
+            await screeningsService.update(existingScreening.id, updateData);
           } else {
             await screeningsService.create(screeningData);
+          }
+        }
+
+        if (followUpDate) {
+          const childScreenings = await screeningsService.getByChildId(editId);
+          const rescreening = childScreenings.find((s: any) => s.type === 'rescreening');
+          if (rescreening) {
+            await screeningsService.update(rescreening.id, { dueDate: new Date(followUpDate).toISOString() });
+          } else {
+            await screeningsService.create({
+              childId: editId,
+              status: 'scheduled',
+              type: 'rescreening',
+              dueDate: new Date(followUpDate).toISOString(),
+              remarks: 'Scheduled for AABR - 2nd Screening',
+            });
           }
         }
         return updatedChild;
@@ -398,19 +458,28 @@ export default function RegisterChildPage() {
       if (overallResult || boaResult || teoaeRight || aabr1Right) {
         await screeningsService.create({
           childId: child.id,
+          type: 'initial',
           status: 'completed',
-          entFindings,
-          boaResult: boaResult as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          teoaeRight,
-          teoaeLeft,
-          dpoaeRight,
-          dpoaeLeft,
-          aabr1Right: aabr1Right as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          aabr1Left: aabr1Left as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          aabr2Right: aabr2Right as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          aabr2Left: aabr2Left as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          overallResult,
-          remarks: data.remarks,
+          entFindings: entFindings || undefined,
+          boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
+          teoaeRight: teoaeRight || undefined,
+          teoaeLeft: teoaeLeft || undefined,
+          dpoaeRight: dpoaeRight || undefined,
+          dpoaeLeft: dpoaeLeft || undefined,
+          aabr1Right: (aabr1Right || undefined) as any,
+          aabr1Left: (aabr1Left || undefined) as any,
+          overallResult: overallResult || undefined,
+          remarks: data.remarks || undefined,
+        } as Partial<Screening>);
+      }
+
+      if (followUpDate) {
+        await screeningsService.create({
+          childId: child.id,
+          status: 'scheduled',
+          type: 'rescreening',
+          dueDate: new Date(followUpDate).toISOString(),
+          remarks: 'Scheduled for AABR - 2nd Screening',
         });
       }
 
@@ -421,30 +490,15 @@ export default function RegisterChildPage() {
       }
     },
     onSuccess: async (data) => {
-      // If a follow-up date was scheduled (all tests failed), create the follow-up record now
       if (followUpDate) {
-        try {
-          const { followUpsService } = await import('../../services/api');
-          await followUpsService.create({
-            childId: data.id,
-            followUpType: 'regular',
-            scheduledDate: new Date(followUpDate).toISOString(),
-            notes: 'Scheduled after all screening tests resulted in refer/CNT/not done. Please repeat full screening on the next visit.',
-          });
-          queryClient.invalidateQueries({ queryKey: ['followUps'] });
-        } catch (e: any) {
-          console.error('[RegisterChild] Failed to create follow-up:', e);
-          const msg = e.response?.data?.message || e.message || 'Unknown error';
-          const detail = Array.isArray(msg) ? msg.join(', ') : msg;
-          toast.error(`Follow-up creation failed: ${detail}`, { duration: 10000 });
-        }
+         queryClient.invalidateQueries({ queryKey: ['screenings'] });
       }
       queryClient.invalidateQueries({ queryKey: ['children'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
       localStorage.removeItem(DRAFT_KEY);
       toast.success(followUpDate
-        ? `Child registered! Follow-up scheduled for ${new Date(followUpDate).toLocaleDateString()}.`
+        ? `Child registered! Re-Screening scheduled for ${new Date(followUpDate).toLocaleDateString()}.`
         : 'Child registered successfully!');
       navigate(`/children/${data.id}`);
     },
@@ -643,11 +697,6 @@ export default function RegisterChildPage() {
                 <label className="text-sm font-medium">Email Address</label>
                 <Input type="email" {...register('email')} />
               </div>
-              <div className="col-span-3">
-                <label className="text-sm font-medium">PIN Code</label>
-                <Input {...register('pinCode')} />
-              </div>
-
               <div className="col-span-6">
                 <label className="text-sm font-medium">Address *</label>
                 <Input
@@ -659,16 +708,6 @@ export default function RegisterChildPage() {
                 )}
               </div>
               <div className="col-span-3">
-                <label className="text-sm font-medium">Taluk *</label>
-                <Input {...register('taluk')} className={cn(errors.taluk && 'border-destructive')} />
-                {errors.taluk && <span className="text-xs text-destructive">{errors.taluk.message}</span>}
-              </div>
-              <div className="col-span-3">
-                <label className="text-sm font-medium">District *</label>
-                <Input {...register('parentDistrict')} className={cn(errors.parentDistrict && 'border-destructive')} />
-                {errors.parentDistrict && <span className="text-xs text-destructive">{errors.parentDistrict.message}</span>}
-              </div>
-              <div className="col-span-3">
                 <label className="text-sm font-medium">State *</label>
                 <select
                   {...register('parentState')}
@@ -678,45 +717,43 @@ export default function RegisterChildPage() {
                   )}
                 >
                   <option value="">-- Select State --</option>
-                  <option value="Andhra Pradesh">Andhra Pradesh</option>
-                  <option value="Arunachal Pradesh">Arunachal Pradesh</option>
-                  <option value="Assam">Assam</option>
-                  <option value="Bihar">Bihar</option>
-                  <option value="Chhattisgarh">Chhattisgarh</option>
-                  <option value="Goa">Goa</option>
-                  <option value="Gujarat">Gujarat</option>
-                  <option value="Haryana">Haryana</option>
-                  <option value="Himachal Pradesh">Himachal Pradesh</option>
-                  <option value="Jharkhand">Jharkhand</option>
-                  <option value="Karnataka">Karnataka</option>
-                  <option value="Kerala">Kerala</option>
-                  <option value="Madhya Pradesh">Madhya Pradesh</option>
-                  <option value="Maharashtra">Maharashtra</option>
-                  <option value="Manipur">Manipur</option>
-                  <option value="Meghalaya">Meghalaya</option>
-                  <option value="Mizoram">Mizoram</option>
-                  <option value="Nagaland">Nagaland</option>
-                  <option value="Odisha">Odisha</option>
-                  <option value="Punjab">Punjab</option>
-                  <option value="Rajasthan">Rajasthan</option>
-                  <option value="Sikkim">Sikkim</option>
-                  <option value="Tamil Nadu">Tamil Nadu</option>
-                  <option value="Telangana">Telangana</option>
-                  <option value="Tripura">Tripura</option>
-                  <option value="Uttar Pradesh">Uttar Pradesh</option>
-                  <option value="Uttarakhand">Uttarakhand</option>
-                  <option value="West Bengal">West Bengal</option>
-                  {/* Union Territories */}
-                  <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
-                  <option value="Chandigarh">Chandigarh</option>
-                  <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</option>
-                  <option value="Delhi">Delhi</option>
-                  <option value="Jammu and Kashmir">Jammu and Kashmir</option>
-                  <option value="Ladakh">Ladakh</option>
-                  <option value="Lakshadweep">Lakshadweep</option>
-                  <option value="Puducherry">Puducherry</option>
+                  {INDIA_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
                 </select>
                 {errors.parentState && <span className="text-xs text-destructive">{errors.parentState.message}</span>}
+              </div>
+              <div className="col-span-3">
+                <label className="text-sm font-medium">District *</label>
+                <CreatableAutocomplete
+                  options={getDistrictsForState(parentState || '')}
+                  placeholder="-- Select or type District --"
+                  disabled={!parentState}
+                  onChange={(val) => {
+                    setValue('parentDistrict', val, { shouldValidate: true });
+                  }}
+                  value={watch('parentDistrict') || ''}
+                />
+                {errors.parentDistrict && <span className="text-xs text-destructive">{errors.parentDistrict.message}</span>}
+              </div>
+              <div className="col-span-3">
+                <label className="text-sm font-medium">Taluk *</label>
+                <CreatableAutocomplete
+                  options={getTaluksForDistrict(parentState || '', parentDistrict || '')}
+                  placeholder="-- Select or type Taluk --"
+                  onChange={(val) => {
+                    setValue('taluk', val, { shouldValidate: true });
+                  }}
+                  value={watch('taluk') || ''}
+                  disabled={!parentDistrict}
+                />
+                {errors.taluk && <span className="text-xs text-destructive">{errors.taluk.message}</span>}
+              </div>
+              <div className="col-span-3">
+                <label className="text-sm font-medium">PIN Code</label>
+                <Input {...register('pinCode')} />
               </div>
 
               {/* Guardian Photo Upload */}
@@ -798,23 +835,24 @@ export default function RegisterChildPage() {
             <FormSection title="Socio-Demographics">
               <div className="col-span-3">
                 <label className="text-sm font-medium">Referred By</label>
-                <select
-                  {...register('referredBy')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                >
-                  <option value="">-- Select --</option>
-                  <option value="pocd_staff">POCD Staff</option>
-                  <option value="doctor">Doctor</option>
-                  <option value="self">Self</option>
-                  <option value="others">Others</option>
-                </select>
+                {referredByValue === 'others' ? (
+                  <div className="flex gap-2 mt-1">
+                    <Input {...register('referredByOther')} placeholder="Type referral source" autoFocus />
+                    <Button variant="outline" size="sm" className="px-2" onClick={() => { setValue('referredBy', undefined); setValue('referredByOther', undefined); }}>X</Button>
+                  </div>
+                ) : (
+                  <select
+                    {...register('referredBy')}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="pocd_staff">POCD Staff</option>
+                    <option value="doctor">Doctor</option>
+                    <option value="self">Self</option>
+                    <option value="others">Others (Specify)</option>
+                  </select>
+                )}
               </div>
-              {referredByValue === 'others' && (
-                <div className="col-span-3">
-                  <label className="text-sm font-medium">Referred By - Specify</label>
-                  <Input {...register('referredByOther')} placeholder="Specify referral source" />
-                </div>
-              )}
               <div className="col-span-3">
                 <label className="text-sm font-medium">Out Reach Service / NBS Centre</label>
                 <Input {...register('nbsCentre')} />
@@ -845,31 +883,45 @@ export default function RegisterChildPage() {
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">Religion</label>
-                <select
-                  {...register('religion')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                >
-                  <option value="">-- Select --</option>
-                  <option value="hindu">Hindu</option>
-                  <option value="muslim">Muslim</option>
-                  <option value="christian">Christian</option>
-                  <option value="others">Others</option>
-                </select>
+                {religionValue === 'others' ? (
+                  <div className="flex gap-2 mt-1">
+                    <Input {...register('religionOther')} placeholder="Type religion" autoFocus />
+                    <Button variant="outline" size="sm" className="px-2" onClick={() => { setValue('religion', undefined); setValue('religionOther', undefined); }}>X</Button>
+                  </div>
+                ) : (
+                  <select
+                    {...register('religion')}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="hindu">Hindu</option>
+                    <option value="muslim">Muslim</option>
+                    <option value="christian">Christian</option>
+                    <option value="others">Others (Specify)</option>
+                  </select>
+                )}
               </div>
 
               <div className="col-span-3">
                 <label className="text-sm font-medium">Education Level (Parents)</label>
-                <select
-                  {...register('educationLevel')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                >
-                  <option value="">-- Select --</option>
-                  <option value="illiterate">Illiterate</option>
-                  <option value="primary">Primary</option>
-                  <option value="high_school">High School</option>
-                  <option value="graduate_and_above">Graduation & Above</option>
-                  <option value="others">Others</option>
-                </select>
+                {educationLevelValue === 'others' ? (
+                  <div className="flex gap-2 mt-1">
+                    <Input {...register('educationLevelOther')} placeholder="Type education level" autoFocus />
+                    <Button variant="outline" size="sm" className="px-2" onClick={() => { setValue('educationLevel', undefined); setValue('educationLevelOther', undefined); }}>X</Button>
+                  </div>
+                ) : (
+                  <select
+                    {...register('educationLevel')}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="illiterate">Illiterate</option>
+                    <option value="primary">Primary</option>
+                    <option value="high_school">High School</option>
+                    <option value="graduate_and_above">Graduation & Above</option>
+                    <option value="others">Others (Specify)</option>
+                  </select>
+                )}
               </div>
               <div className="col-span-3">
                 <label className="text-sm font-medium">Type of Delivery</label>
@@ -887,33 +939,26 @@ export default function RegisterChildPage() {
 
               <div className="col-span-2">
                 <label className="text-sm font-medium">No. of Siblings</label>
-                {(() => {
-                  const { ref: siblingsRef, onChange: siblingsRhfOnChange, ...siblingsRest } = register('noOfSiblings');
-                  return (
-                    <Input
-                      type="number"
-                      min={0}
-                      ref={siblingsRef}
-                      {...siblingsRest}
-                      onKeyDown={(e) => {
-                        if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
-                          e.preventDefault();
-                        }
-                      }}
-                      onPaste={(e) => {
-                        const text = e.clipboardData.getData('text');
-                        if (parseInt(text, 10) < 0) e.preventDefault();
-                      }}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val) && val < 0) {
-                          e.target.value = '0';
-                        }
-                        siblingsRhfOnChange(e);
-                      }}
-                    />
-                  );
-                })()}
+                <Input
+                  type="number"
+                  min={0}
+                  {...register('noOfSiblings')}
+                  onKeyDown={(e) => {
+                    if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
+                      e.preventDefault();
+                    }
+                  }}
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text');
+                    if (parseInt(text, 10) < 0) e.preventDefault();
+                  }}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val < 0) {
+                      e.target.value = '0';
+                    }
+                  }}
+                />
               </div>
             </FormSection>
           )}
@@ -924,7 +969,31 @@ export default function RegisterChildPage() {
                 <RiskFactorChecklist
                   selectedIds={riskFactorIds}
                   onChange={(ids) => setValue('riskFactorIds', ids)}
-                />
+                >
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="familyHistoryHearingLoss"
+                      {...register('familyHistoryHearingLoss')}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-input text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="familyHistoryHearingLoss" className="text-sm font-medium leading-none">
+                      Family history of early/progressive/delayed hearing loss
+                    </label>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <label className="text-sm font-medium leading-none mt-2">Consanguinity:</label>
+                    <select
+                      {...register('consanguinityDegree')}
+                      className="flex h-8 flex-1 rounded-md border border-input bg-transparent px-2 text-sm"
+                    >
+                      <option value="">None</option>
+                      <option value="first">1st Degree</option>
+                      <option value="second">2nd Degree</option>
+                      <option value="third">3rd Degree</option>
+                    </select>
+                  </div>
+                </RiskFactorChecklist>
               </div>
               <div className="col-span-6 flex items-center gap-4 pt-2 border-t mt-2">
                 <span className="text-sm font-medium">HRR findings</span>
@@ -949,11 +1018,23 @@ export default function RegisterChildPage() {
                   <span className="text-sm">HRR (1)</span>
                 </label>
               </div>
+              <div className="col-span-6 flex items-center space-x-2 mt-2">
+                <input
+                  type="checkbox"
+                  id="caregiverConcern"
+                  {...register('caregiverConcern')}
+                  className="h-4 w-4 shrink-0 rounded border-input text-primary focus:ring-primary"
+                />
+                <label htmlFor="caregiverConcern" className="text-sm font-medium leading-none">
+                  Caregiver concern
+                </label>
+              </div>
+
             </FormSection>
           )}
 
           {currentStep === 4 && (
-            <FormSection title="Audiologist's Assessment">
+            <FormSection title="Reflex Assessment">
               <div className="col-span-3">
                 <label className="text-sm font-medium">Staff ID (Assessing)</label>
                 <select
@@ -969,32 +1050,6 @@ export default function RegisterChildPage() {
                 </select>
               </div>
 
-              <div className="col-span-3 flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  {...register('familyHistoryHearingLoss')}
-                  className="h-4 w-4"
-                />
-                <span className="text-sm">
-                  Family history of early/progressive/delayed hearing loss
-                </span>
-              </div>
-              <div className="col-span-3 flex items-center space-x-2">
-                <input type="checkbox" {...register('caregiverConcern')} className="h-4 w-4" />
-                <span className="text-sm">Caregiver concern</span>
-              </div>
-              <div className="col-span-3">
-                <label className="text-sm font-medium">Consanguinity</label>
-                <select
-                  {...register('consanguinityDegree')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                >
-                  <option value="">None</option>
-                  <option value="first">1st Degree</option>
-                  <option value="second">2nd Degree</option>
-                  <option value="third">3rd Degree</option>
-                </select>
-              </div>
 
               <div className="col-span-6 space-y-2">
                 <h4 className="text-sm font-semibold">New Born Reflexes</h4>
@@ -1131,7 +1186,7 @@ export default function RegisterChildPage() {
                 </div>
 
                 {/* Step 5 — Audiologist Assessment */}
-                <SectionHead title="Step 5 — Audiologist's Assessment" icon="🩺" />
+                <SectionHead title="Step 5 — Reflex Assessment" icon="🩺" />
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
                   <Row
                     label="Staff ID (Assessing)"
@@ -1239,7 +1294,14 @@ export default function RegisterChildPage() {
                 <Button
                   type="button"
                   disabled={mutation.isPending || !confirmed}
-                  onClick={handleSubmit((d) => mutation.mutate(d))}
+                  onClick={handleSubmit(
+                    (d) => mutation.mutate(d),
+                    (errors) => {
+                      console.log('Form validation errors:', errors);
+                      const errorMessages = Object.values(errors).map(e => e?.message).filter(Boolean);
+                      toast.error(`Please fix the errors before submitting: ${errorMessages.join(', ')}`);
+                    }
+                  )}
                   title={!confirmed ? 'Please check the confirmation box above before registering' : undefined}
                 >
                   {mutation.isPending ? 'Saving...' : editId ? 'Save Changes' : 'Register Child'}

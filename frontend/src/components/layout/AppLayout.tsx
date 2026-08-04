@@ -14,6 +14,7 @@ import {
   UserPlus,
   Users,
   Maximize2,
+  Repeat,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -31,8 +32,9 @@ export function AppLayout() {
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Register Child', path: '/children/register', icon: UserPlus },
     { label: 'Children', path: '/children', icon: Baby },
-    { label: 'Staff', path: '/staff', icon: Users },
+    { label: 'Re-Screening', path: '/rescreening', icon: Repeat },
     { label: 'Follow-ups', path: '/follow-ups', icon: Calendar },
+    { label: 'Staff', path: '/staff', icon: Users },
     { label: 'Hospitals', path: '/hospitals', icon: Hospital },
     { label: 'Analytics', path: '/analytics', icon: BarChart3 },
     { label: 'Settings', path: '/settings', icon: Settings },

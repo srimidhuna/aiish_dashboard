@@ -10,9 +10,8 @@ import {
   Clock,
   AlertTriangle,
   Hospital,
-  Search,
-  X,
   Plus,
+  X,
 } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useTheme } from '../../components/ThemeProvider';
@@ -164,8 +163,26 @@ export default function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedState = searchParams.get('state') ?? undefined;
   const selectedYear = searchParams.get('year') ?? new Date().getFullYear().toString();
+  const viewBy = (searchParams.get('viewBy') ?? 'yearly') as 'yearly' | 'monthly' | 'daily';
+  const selectedMonth = searchParams.get('month') ?? undefined;
+  const selectedDay = searchParams.get('day') ?? undefined;
   const { theme } = useTheme();
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  // Build filter params object
+  const dateParams = {
+    year: selectedYear,
+    ...(viewBy !== 'yearly' && selectedMonth ? { month: selectedMonth } : {}),
+    ...(viewBy === 'daily' && selectedDay ? { day: selectedDay } : {}),
+  };
+
+  // Month names for display
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Days in the currently selected month
+  const daysInSelectedMonth = selectedMonth
+    ? new Date(parseInt(selectedYear), parseInt(selectedMonth), 0).getDate()
+    : 31;
 
   const { data: availableYears, isLoading: yLoading } = useQuery({
     queryKey: ['available-years'],
@@ -173,20 +190,20 @@ export default function DashboardPage() {
   });
 
   const { data: overview, isLoading: oLoading } = useQuery({
-    queryKey: ['dashboard-overview', selectedYear],
-    queryFn: () => dashboardService.getOverview(selectedYear),
+    queryKey: ['dashboard-overview', dateParams.year, dateParams.month, dateParams.day],
+    queryFn: () => dashboardService.getOverview(dateParams),
   });
 
   const { data: analytics, isLoading: aLoading } = useQuery({
-    queryKey: ['analytics', selectedYear],
-    queryFn: () => analyticsService.getAnalytics(selectedYear),
+    queryKey: ['analytics', dateParams.year, dateParams.month, dateParams.day],
+    queryFn: () => analyticsService.getAnalytics(dateParams),
     staleTime: 0,
     refetchInterval: 60_000, // auto-refresh every 60 s
   });
 
-  const { data: highRiskBabies, isLoading: hLoading } = useQuery({
-    queryKey: ['dashboard-high-risk-babies', selectedYear],
-    queryFn: () => dashboardService.getHighRiskBabies(selectedYear),
+  const { data: todaysFollowUps, isLoading: hLoading } = useQuery({
+    queryKey: ['dashboard-todays-follow-ups', dateParams.year, dateParams.month, dateParams.day],
+    queryFn: () => dashboardService.getTodaysFollowUps(dateParams),
   });
 
   const isLoading = oLoading || aLoading || hLoading || yLoading;
@@ -219,7 +236,6 @@ export default function DashboardPage() {
   // Use parentStatePerformance for the map (reflects where parents actually live)
   const parentStateRows = analytics?.parentStatePerformance ?? [];
   const mapStateRows = parentStateRows.length > 0 ? parentStateRows : stateRows;
-  const visibleStates = mapStateRows.slice(0, 5);
   // District drill-down from parentDistrictPerformance
   const parentDistrictRows: ParentDistrictRow[] = analytics?.parentDistrictPerformance ?? [];
 
@@ -247,14 +263,46 @@ export default function DashboardPage() {
     <div className="space-y-5 animate-in fade-in duration-300">
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">
             Overview Dashboard
           </h1>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Year Filter Dropdown */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View By segmented control */}
+          <div className="flex rounded-xl border border-border bg-muted/50 p-0.5 shadow-sm">
+            {(['yearly', 'monthly', 'daily'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev);
+                    next.set('viewBy', mode);
+                    if (mode === 'yearly') { next.delete('month'); next.delete('day'); }
+                    if (mode === 'monthly') {
+                      if (!next.get('month')) next.set('month', (new Date().getMonth() + 1).toString());
+                      next.delete('day');
+                    }
+                    if (mode === 'daily') {
+                      if (!next.get('month')) next.set('month', (new Date().getMonth() + 1).toString());
+                      if (!next.get('day')) next.set('day', new Date().getDate().toString());
+                    }
+                    return next;
+                  });
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  viewBy === mode
+                    ? 'bg-card text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Year dropdown (always shown) */}
           <select
             value={selectedYear}
             onChange={(e) => {
@@ -264,20 +312,55 @@ export default function DashboardPage() {
                 return next;
               });
             }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm cursor-pointer appearance-none pr-8 relative"
-            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%236b7280\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E")', backgroundPosition: 'right 12px center', backgroundRepeat: 'no-repeat', backgroundSize: '16px' }}
+            className="px-3 py-2 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm cursor-pointer appearance-none pr-7"
+            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%236b7280\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E")', backgroundPosition: 'right 8px center', backgroundRepeat: 'no-repeat', backgroundSize: '14px' }}
           >
             {availableYears?.map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
 
-          <button
-            onClick={() => navigate('/children')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:border-indigo-400 hover:text-indigo-600 transition-all shadow-sm"
-          >
-            <Search className="h-4 w-4" /> Find Child
-          </button>
+          {/* Month dropdown (shown for monthly & daily) */}
+          {(viewBy === 'monthly' || viewBy === 'daily') && (
+            <select
+              value={selectedMonth ?? ''}
+              onChange={(e) => {
+                setSearchParams(prev => {
+                  const next = new URLSearchParams(prev);
+                  next.set('month', e.target.value);
+                  next.delete('day');
+                  return next;
+                });
+              }}
+              className="px-3 py-2 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm cursor-pointer appearance-none pr-7"
+              style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%236b7280\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E")', backgroundPosition: 'right 8px center', backgroundRepeat: 'no-repeat', backgroundSize: '14px' }}
+            >
+              {MONTH_NAMES.map((name, i) => (
+                <option key={i + 1} value={(i + 1).toString()}>{name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Day dropdown (shown for daily) */}
+          {viewBy === 'daily' && (
+            <select
+              value={selectedDay ?? ''}
+              onChange={(e) => {
+                setSearchParams(prev => {
+                  const next = new URLSearchParams(prev);
+                  next.set('day', e.target.value);
+                  return next;
+                });
+              }}
+              className="px-3 py-2 rounded-xl border border-border bg-card text-sm font-medium text-foreground hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm cursor-pointer appearance-none pr-7"
+              style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%236b7280\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E")', backgroundPosition: 'right 8px center', backgroundRepeat: 'no-repeat', backgroundSize: '14px' }}
+            >
+              {Array.from({ length: daysInSelectedMonth }, (_, i) => i + 1).map(d => (
+                <option key={d} value={d.toString()}>{d}</option>
+              ))}
+            </select>
+          )}
+
           <button
             onClick={() => navigate('/children/register')}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg hover:opacity-90 transition-all"
@@ -291,34 +374,22 @@ export default function DashboardPage() {
       {/* ── KPI Row — 6 cards ── */}
       <div className="grid grid-cols-6 gap-3">
         <StatCard
-          label="Total Registered" value={overview?.totalRegistered ?? 0}
+          label="Active Hospitals" value={overview?.activeHospitals ?? 0}
+          iconBg="bg-emerald-100" icon={<Hospital className="h-5 w-5 text-emerald-600" />}
+          trend={`↑4%`} trendColor="bg-emerald-100 text-emerald-600"
+          sparkColor="#10b981" sparkId="hospitals" sparkValue={overview?.activeHospitals ?? 0}
+        />
+        <StatCard
+          label="Total Screened" value={overview?.totalRegistered ?? 0}
           iconBg="bg-indigo-100" icon={<Users className="h-5 w-5 text-indigo-600" />}
           trend={`↑12%`} trendColor="bg-emerald-100 text-emerald-600"
           sparkColor="#6366f1" sparkId="registered" sparkValue={overview?.totalRegistered ?? 0}
         />
         <StatCard
-          label="Today's Registrations" value={overview?.todaysRegistrations ?? 0}
-          iconBg="bg-purple-100" icon={<Users className="h-5 w-5 text-purple-600" />}
-          trend={`↑3%`} trendColor="bg-emerald-100 text-emerald-600"
-          sparkColor="#a855f7" sparkId="todaysReg" sparkValue={overview?.todaysRegistrations ?? 0}
-        />
-        <StatCard
-          label="Pending Follow-ups" value={overview?.pendingFollowUps ?? 0}
-          iconBg="bg-amber-100" icon={<Clock className="h-5 w-5 text-amber-500" />}
-          trend={`↑5%`} trendColor="bg-emerald-100 text-emerald-600"
-          sparkColor="#f59e0b" sparkId="followups" sparkValue={overview?.pendingFollowUps ?? 0}
-        />
-        <StatCard
-          label="High-Risk Babies" value={overview?.highRiskBabies ?? 0}
+          label="Number of Babies Referred" value={overview?.highRiskBabies ?? 0}
           iconBg="bg-red-100" icon={<AlertTriangle className="h-5 w-5 text-red-500" />}
           trend={`↑2%`} trendColor="bg-red-100 text-red-500"
           sparkColor="#ef4444" sparkId="highrisk" sparkValue={overview?.highRiskBabies ?? 0}
-        />
-        <StatCard
-          label="Active Hospitals" value={overview?.activeHospitals ?? 0}
-          iconBg="bg-emerald-100" icon={<Hospital className="h-5 w-5 text-emerald-600" />}
-          trend={`↑4%`} trendColor="bg-emerald-100 text-emerald-600"
-          sparkColor="#10b981" sparkId="hospitals" sparkValue={overview?.activeHospitals ?? 0}
         />
         <StatCard
           label="Today's Screenings" value={overview?.todaysScreenings ?? 0}
@@ -326,6 +397,18 @@ export default function DashboardPage() {
           trend={`↑9%`} trendColor="bg-emerald-100 text-emerald-600"
           sparkColor="#0ea5e9" sparkId="screenings" sparkValue={overview?.todaysScreenings ?? 0}
           onClick={() => setShowTodayResults((prev) => !prev)}
+        />
+        <StatCard
+          label="Reappearing for Screening" value={overview?.rescreeningRequired ?? 0}
+          iconBg="bg-amber-100" icon={<Clock className="h-5 w-5 text-amber-500" />}
+          trend={`↑5%`} trendColor="bg-emerald-100 text-emerald-600"
+          sparkColor="#f59e0b" sparkId="rescreening" sparkValue={overview?.rescreeningRequired ?? 0}
+        />
+        <StatCard
+          label="Today's Follow-ups" value={overview?.todaysFollowUps ?? 0}
+          iconBg="bg-purple-100" icon={<Clock className="h-5 w-5 text-purple-600" />}
+          trend={`↑3%`} trendColor="bg-emerald-100 text-emerald-600"
+          sparkColor="#a855f7" sparkId="todaysFollowUps" sparkValue={overview?.todaysFollowUps ?? 0}
         />
       </div>
 
@@ -447,14 +530,12 @@ export default function DashboardPage() {
                         <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Registered</th>
                         <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">
                           <span className="flex items-center justify-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                            BOA Pass
+                            Pass
                           </span>
                         </th>
                         <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">
                           <span className="flex items-center justify-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
-                            BOA Fail
+                            Refer
                           </span>
                         </th>
                       </tr>
@@ -469,14 +550,12 @@ export default function DashboardPage() {
                           <td className="px-3 py-3.5 text-center text-foreground font-medium">{d.registered}</td>
                           <td className="px-3 py-3.5 text-center">
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-semibold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              {d.boaPass}
+                              {d.passes}
                             </span>
                           </td>
                           <td className="px-3 py-3.5 text-center">
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 font-semibold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                              {d.boaFail}
+                              {d.refers}
                             </span>
                           </td>
                         </tr>
@@ -495,11 +574,12 @@ export default function DashboardPage() {
                     <th className="px-5 py-2.5 text-left font-semibold text-muted-foreground uppercase tracking-wide">State</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Hospitals</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Registered</th>
-                    <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Screenings</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Pass</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wide">Refer</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleStates.map((s, idx) => (
+                  {mapStateRows.map((s) => (
                     <tr
                       key={s.name}
                       className="border-b border-border hover:bg-muted/50 cursor-pointer transition-colors"
@@ -509,18 +589,14 @@ export default function DashboardPage() {
                       <td className="px-3 py-3.5 text-center text-foreground">{s.hospitals}</td>
                       <td className="px-3 py-3.5 text-center text-foreground">{s.registered}</td>
                       <td className="px-3 py-3.5 text-center text-foreground">
-                        <div className="flex items-center gap-2 justify-center">
-                          <span>{s.screenings}</span>
-                          <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${(s.screenings / maxScreenings) * 100}%`,
-                                backgroundColor: stateBarColors[idx % stateBarColors.length],
-                              }}
-                            />
-                          </div>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-semibold">
+                          {s.passes}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3.5 text-center text-foreground">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 font-semibold">
+                          {s.refers}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -537,10 +613,14 @@ export default function DashboardPage() {
       {/* ── Charts Row: Monthly Trend | Gender | Age-wise ── */}
       <div className="grid grid-cols-12 gap-4">
 
-        {/* Monthly Screening Trend */}
+        {/* Screening Trend */}
         <div className="col-span-4 bg-card rounded-2xl border border-border shadow-sm p-5">
-          <p className="text-sm font-bold text-foreground">Monthly Screening Trend</p>
-          <p className="text-[11px] text-muted-foreground mb-3">Screenings conducted per month</p>
+          <p className="text-sm font-bold text-foreground">
+            {viewBy === 'daily' ? 'Hourly Screening Trend' : viewBy === 'monthly' ? 'Daily Screening Trend' : 'Monthly Screening Trend'}
+          </p>
+          <p className="text-[11px] text-muted-foreground mb-3">
+            {viewBy === 'daily' ? 'Screenings by hour' : viewBy === 'monthly' ? 'Screenings by day' : 'Screenings by month'}
+          </p>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" strokeOpacity={0.2} />
@@ -641,37 +721,35 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* High-Risk Babies horizontal cards */}
+        {/* Today's Follow-ups horizontal cards */}
         <div className="col-span-6 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-            <p className="text-sm font-bold text-foreground">High-Risk Babies</p>
-            <button onClick={() => navigate('/children')} className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+            <p className="text-sm font-bold text-foreground">Today's Follow-ups</p>
+            <button onClick={() => navigate('/follow-ups')} className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
               View all →
             </button>
           </div>
           <div className="flex items-center gap-3 px-5 py-4 overflow-x-auto">
-            {(highRiskBabies ?? []).slice(0, 5).map((b) => (
+            {(todaysFollowUps ?? []).slice(0, 5).map((f) => (
               <div
-                key={b.id}
+                key={f.id}
                 className="flex flex-col items-center gap-2 min-w-[120px] p-3 rounded-xl border border-border hover:shadow-md cursor-pointer transition-all hover:border-indigo-200 dark:hover:border-indigo-800"
-                onClick={() => navigate(`/children/${b.id}`)}
+                onClick={() => navigate(`/children/${f.childId}`)}
               >
                 <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                  {b.firstName.charAt(0)}
+                  {f.firstName.charAt(0)}
                 </div>
                 <div className="text-center">
-                  <p className="text-xs font-semibold text-foreground truncate max-w-[100px]">{b.firstName}</p>
-                  <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">{b.hospital}</p>
+                  <p className="text-xs font-semibold text-foreground truncate max-w-[100px]">{f.firstName} {f.lastName}</p>
+                  <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">{f.hospital}</p>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                  b.riskLevel === 'High' ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
-                }`}>
-                  {b.riskLevel}
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400`}>
+                  {f.status}
                 </span>
               </div>
             ))}
-            {(!highRiskBabies || highRiskBabies.length === 0) && (
-              <p className="text-muted-foreground text-sm py-4 text-center w-full">No high risk babies</p>
+            {(!todaysFollowUps || todaysFollowUps.length === 0) && (
+              <p className="text-muted-foreground text-sm py-4 text-center w-full">No follow-ups for today</p>
             )}
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { apiClient } from '../apiClient';
+import type { DateFilterParams } from './dashboardService';
 
 export interface NameValue {
   name: string;
@@ -16,6 +17,7 @@ export interface LocationPerformanceRow extends PerformanceRow {
   hospitals: number;
   registered: number;
   referralRate: string;
+  passes?: number;
   pendingFollowUps: number;
 }
 
@@ -24,8 +26,8 @@ export interface ParentDistrictRow {
   name: string;
   state: string;
   registered: number;
-  boaPass: number;
-  boaFail: number;
+  passes: number;
+  refers: number;
 }
 
 export interface YearlyPerformanceRow {
@@ -52,8 +54,8 @@ export interface AnalyticsPayload {
 }
 
 export const analyticsService = {
-  getAnalytics: async (year?: string): Promise<AnalyticsPayload> => {
-    const { data } = await apiClient.get('/dashboard/analytics', { params: { year } });
+  getAnalytics: async (params?: DateFilterParams): Promise<AnalyticsPayload> => {
+    const { data } = await apiClient.get('/dashboard/analytics', { params });
     return data;
   },
 };

@@ -16,6 +16,11 @@ export class CreateScreeningDto {
   @IsIn(STATUS)
   status?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  type?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() assignedAudiologistId?: string;
 

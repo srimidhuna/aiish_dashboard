@@ -71,13 +71,47 @@ function normalizeStateName(raw: string): string {
 
 @Injectable()
 export class DashboardService {
-  private getYearFilter(year?: string) {
+  private getDateFilter(year?: string, month?: string, day?: string) {
     if (!year) return undefined;
     const y = parseInt(year, 10);
     if (isNaN(y)) return undefined;
+
+    const m = month ? parseInt(month, 10) : undefined;
+    const d = day ? parseInt(day, 10) : undefined;
+
+    if (m !== undefined && !isNaN(m) && d !== undefined && !isNaN(d)) {
+      // Daily: specific day
+      const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+      const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+      return { gte: start, lte: end };
+    }
+    if (m !== undefined && !isNaN(m)) {
+      // Monthly: entire month
+      const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+      const end = new Date(y, m, 0, 23, 59, 59, 999); // day 0 of next month = last day of current month
+      return { gte: start, lte: end };
+    }
+    // Yearly: entire year
     const start = new Date(y, 0, 1);
     const end = new Date(y, 11, 31, 23, 59, 59, 999);
     return { gte: start, lte: end };
+  }
+
+  /** Check whether the given filter range includes the current day */
+  private filterIncludesToday(year?: string, month?: string, day?: string): boolean {
+    if (!year) return true; // no filter = includes today
+    const now = new Date();
+    const y = parseInt(year, 10);
+    if (y !== now.getFullYear()) return false;
+    if (month) {
+      const m = parseInt(month, 10);
+      if (m !== now.getMonth() + 1) return false;
+      if (day) {
+        const d = parseInt(day, 10);
+        if (d !== now.getDate()) return false;
+      }
+    }
+    return true;
   }
 
   async getAvailableYears() {
@@ -97,19 +131,19 @@ export class DashboardService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview(year?: string) {
-    const yearFilter = this.getYearFilter(year);
-    const babyWhere = yearFilter ? { deletedAt: null, createdAt: yearFilter } : { deletedAt: null };
-    const screeningWhere = yearFilter ? { status: 'completed', testedAt: yearFilter } : { status: 'completed' };
-    const followUpWhere = yearFilter ? { status: { in: ['scheduled', 'rescheduled'] }, scheduledDate: yearFilter } : { status: { in: ['scheduled', 'rescheduled'] } };
+  async getOverview(year?: string, month?: string, day?: string) {
+    const dateFilter = this.getDateFilter(year, month, day);
+    const babyWhere = dateFilter ? { deletedAt: null, createdAt: dateFilter } : { deletedAt: null };
+    const screeningWhere = dateFilter ? { status: 'completed', testedAt: dateFilter } : { status: 'completed' };
+    const followUpWhere = dateFilter ? { status: { in: ['scheduled', 'rescheduled'] }, scheduledDate: dateFilter } : { status: { in: ['scheduled', 'rescheduled'] } };
     
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    const isCurrentYear = !year || parseInt(year, 10) === new Date().getFullYear();
-    const todaysRange = isCurrentYear 
+    const includestoday = this.filterIncludesToday(year, month, day);
+    const todaysRange = includestoday 
       ? { gte: startOfToday, lte: endOfToday } 
       : { gte: new Date('1970-01-01'), lte: new Date('1970-01-01') };
 
@@ -123,7 +157,9 @@ export class DashboardService {
       referCount,
       activeHospitals,
       pendingFollowUps,
+      todaysFollowUps,
       highRiskBabies,
+      rescreeningRequired,
     ] = await Promise.all([
       this.prisma.baby.count({ where: babyWhere as any }),
       this.prisma.baby.count({
@@ -142,7 +178,15 @@ export class DashboardService {
       this.prisma.screening.count({ where: { ...screeningWhere, overallResult: 'refer' } as any }),
       this.prisma.hospital.count({ where: { status: 'active' } }),
       this.prisma.followUp.count({ where: followUpWhere as any }),
+      this.prisma.followUp.count({ where: { scheduledDate: todaysRange } }),
       this.prisma.baby.count({ where: { ...babyWhere, riskFactors: { some: {} } } as any }),
+      this.prisma.screening.count({
+        where: {
+          status: 'completed',
+          type: 'rescreening',
+          testedAt: todaysRange,
+        },
+      }),
     ]);
 
     return {
@@ -155,21 +199,25 @@ export class DashboardService {
       referralRate: totalScreenings ? Math.round((referCount / totalScreenings) * 100) + '%' : '0%',
       activeHospitals,
       pendingFollowUps,
+      rescreeningRequired,
+      todaysFollowUps,
       highRiskBabies,
     };
   }
 
-  async getActivityTimeline(year?: string) {
-    return this.prisma.patientTimeline.findMany({ where: year ? { createdAt: this.getYearFilter(year) } : undefined,
+  async getActivityTimeline(year?: string, month?: string, day?: string) {
+    const dateFilter = this.getDateFilter(year, month, day);
+    return this.prisma.patientTimeline.findMany({ where: dateFilter ? { createdAt: dateFilter } : undefined,
       include: { baby: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: 'desc' },
       take: 8,
     });
   }
 
-  async getHighRiskBabies(year?: string) {
+  async getHighRiskBabies(year?: string, month?: string, day?: string) {
+    const dateFilter = this.getDateFilter(year, month, day);
     return this.prisma.baby.findMany({
-      where: { deletedAt: null, riskFactors: { some: {} }, ...(year ? { createdAt: this.getYearFilter(year) } : {}) },
+      where: { deletedAt: null, riskFactors: { some: {} }, ...(dateFilter ? { createdAt: dateFilter } : {}) },
       include: {
         hospital: { select: { name: true } },
         riskFactors: { include: { riskCategory: { select: { label: true } } } },
@@ -185,17 +233,48 @@ export class DashboardService {
       riskLevel: b.riskFactors.length > 1 ? 'High' : 'Medium',
     })));
   }
+  async getTodaysFollowUps(year?: string, month?: string, day?: string) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    
+    const includesToday = this.filterIncludesToday(year, month, day);
+    if (!includesToday) return [];
 
-  async getUpcomingFollowUps(year?: string) {
     return this.prisma.followUp.findMany({
-      where: { status: { in: ['scheduled', 'rescheduled'] }, ...(year ? { scheduledDate: this.getYearFilter(year) } : {}) },
+      where: {
+        status: { in: ['scheduled', 'rescheduled'] },
+        scheduledDate: { gte: startOfToday, lte: endOfToday },
+      },
+      include: {
+        baby: {
+          select: { firstName: true, lastName: true, hospital: { select: { name: true } } }
+        }
+      },
+      orderBy: { scheduledDate: 'asc' },
+    }).then(followUps => followUps.map(f => ({
+      id: f.id,
+      childId: f.babyId,
+      firstName: f.baby.firstName,
+      lastName: f.baby.lastName,
+      hospital: f.baby.hospital.name,
+      status: f.status,
+      followUpType: f.followUpType,
+    })));
+  }
+
+  async getUpcomingFollowUps(year?: string, month?: string, day?: string) {
+    const dateFilter = this.getDateFilter(year, month, day);
+    return this.prisma.followUp.findMany({
+      where: { status: { in: ['scheduled', 'rescheduled'] }, ...(dateFilter ? { scheduledDate: dateFilter } : {}) },
       include: { baby: { select: { firstName: true, lastName: true } } },
       orderBy: { scheduledDate: 'asc' },
       take: 5,
     });
   }
 
-  async getNotifications(year?: string) {
+  async getNotifications(year?: string, month?: string, day?: string) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const endOfToday = new Date();
@@ -249,8 +328,9 @@ export class DashboardService {
       .slice(0, 10);
   }
 
-  async getAnalytics(year?: string) {
-    const babies = await this.prisma.baby.findMany({ where: { deletedAt: null, ...(year ? { createdAt: this.getYearFilter(year) } : {}) },
+  async getAnalytics(year?: string, month?: string, day?: string) {
+    const dateFilter = this.getDateFilter(year, month, day);
+    const babies = await this.prisma.baby.findMany({ where: { deletedAt: null, ...(dateFilter ? { createdAt: dateFilter } : {}) },
       
       include: {
         district: { include: { state: true } },
@@ -274,22 +354,40 @@ export class DashboardService {
     let urban = 0;
     let rural = 0;
 
-    // Analytics state variables
-    const monthCounts = new Map<string, number>();
+    // Analytics state variables — adaptive trend data
+    const trendCounts = new Map<string, number>();
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonth = new Date().getMonth();
-    for (let i = 5; i >= 0; i--) {
-      let m = currentMonth - i;
-      if (m < 0) m += 12;
-      monthCounts.set(months[m], 0);
+    const parsedMonth = month ? parseInt(month, 10) : undefined;
+    const parsedDay = day ? parseInt(day, 10) : undefined;
+    const parsedYear = year ? parseInt(year, 10) : new Date().getFullYear();
+
+    if (parsedMonth && parsedDay) {
+      // Daily view → hourly buckets (0h–23h)
+      const maxHour = (parsedYear === new Date().getFullYear() && parsedMonth === new Date().getMonth() + 1 && parsedDay === new Date().getDate()) ? new Date().getHours() : 23;
+      for (let h = 0; h <= maxHour; h++) {
+        trendCounts.set(`${h}:00`, 0);
+      }
+    } else if (parsedMonth) {
+      // Monthly view → daily buckets
+      const daysInMonth = new Date(parsedYear, parsedMonth, 0).getDate();
+      const maxDay = (parsedYear === new Date().getFullYear() && parsedMonth === new Date().getMonth() + 1) ? new Date().getDate() : daysInMonth;
+      for (let d = 1; d <= maxDay; d++) {
+        trendCounts.set(`${d}`, 0);
+      }
+    } else {
+      // Yearly view
+      const maxMonthIdx = parsedYear === new Date().getFullYear() ? new Date().getMonth() : 11;
+      for (let i = 0; i <= maxMonthIdx; i++) {
+        trendCounts.set(months[i], 0);
+      }
     }
     
     const ageGroups = {
-      '0-1m': 0,
-      '1-3m': 0,
-      '3-6m': 0,
-      '6-12m': 0,
-      '>12m': 0,
+      '0-7d': 0,
+      '8-14d': 0,
+      '15-21d': 0,
+      '22-28d': 0,
+      '>28d': 0,
     };
     let totalFollowUps = 0;
     let completedFollowUps = 0;
@@ -306,6 +404,7 @@ export class DashboardService {
         registered: number;
         screenings: number;
         refers: number;
+        passes: number;
         pendingFollowUps: number;
       }
     >();
@@ -317,6 +416,7 @@ export class DashboardService {
         registered: number;
         screenings: number;
         refers: number;
+        passes: number;
         pendingFollowUps: number;
         males: number;
         females: number;
@@ -331,6 +431,7 @@ export class DashboardService {
         registered: number;
         screenings: number;
         refers: number;
+        passes: number;
         pendingFollowUps: number;
         males: number;
         females: number;
@@ -345,8 +446,8 @@ export class DashboardService {
         name: string;
         state: string;
         registered: number;
-        boaPass: number;
-        boaFail: number;
+        passes: number;
+        refers: number;
       }
     >();
     const hospitalMap = new Map<string, { name: string; screenings: number; refers: number }>();
@@ -359,7 +460,13 @@ export class DashboardService {
       const stateName = b.district.state.name;
       const rawParentState = (b.parentState ?? '').trim();
       const bScreenings = b.screenings.length;
-      const bRefers = b.screenings.filter((s) => s.overallResult === 'refer').length;
+      let bPasses = 0;
+      let bRefers = 0;
+      if (b.screenings.length > 0) {
+        const latestScreening = [...b.screenings].sort((a, b) => (b.testedAt?.getTime() || 0) - (a.testedAt?.getTime() || 0))[0];
+        if (latestScreening.overallResult === 'pass') bPasses = 1;
+        else if (latestScreening.overallResult === 'refer') bRefers = 1;
+      }
       const bPendingFollowUps = b.followUps.filter(f => f.status === 'scheduled' || f.status === 'rescheduled').length;
 
       const sortedScreenings = [...b.screenings].sort((a, b) => (a.testedAt?.getTime() || 0) - (b.testedAt?.getTime() || 0));
@@ -377,11 +484,11 @@ export class DashboardService {
       if (b.dob) {
         const diffTime = Math.abs(new Date().getTime() - new Date(b.dob).getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays <= 30) ageGroups['0-1m']++;
-        else if (diffDays <= 90) ageGroups['1-3m']++;
-        else if (diffDays <= 180) ageGroups['3-6m']++;
-        else if (diffDays <= 365) ageGroups['6-12m']++;
-        else ageGroups['>12m']++;
+        if (diffDays <= 7) ageGroups['0-7d']++;
+        else if (diffDays <= 14) ageGroups['8-14d']++;
+        else if (diffDays <= 21) ageGroups['15-21d']++;
+        else if (diffDays <= 28) ageGroups['22-28d']++;
+        else ageGroups['>28d']++;
       }
 
       // Follow-up success
@@ -398,17 +505,29 @@ export class DashboardService {
         }
       }
 
-      // Monthly and Yearly screenings
+      // Adaptive trend and yearly screenings
       for (const s of b.screenings) {
         if (s.testedAt) {
-          const month = months[s.testedAt.getMonth()];
-          monthCounts.set(month, (monthCounts.get(month) || 0) + 1);
-
-          const year = s.testedAt.getFullYear().toString();
-          if (!yearMap.has(year)) {
-            yearMap.set(year, { name: year, screenings: 0, refers: 0 });
+          // Trend bucket based on view mode
+          if (parsedMonth && parsedDay) {
+            // Daily → hourly
+            const key = `${s.testedAt.getHours()}:00`;
+            if (trendCounts.has(key)) trendCounts.set(key, trendCounts.get(key)! + 1);
+          } else if (parsedMonth) {
+            // Monthly → daily
+            const key = `${s.testedAt.getDate()}`;
+            if (trendCounts.has(key)) trendCounts.set(key, trendCounts.get(key)! + 1);
+          } else {
+            // Yearly → monthly
+            const monthKey = months[s.testedAt.getMonth()];
+            if (trendCounts.has(monthKey)) trendCounts.set(monthKey, trendCounts.get(monthKey)! + 1);
           }
-          const y = yearMap.get(year)!;
+
+          const yr = s.testedAt.getFullYear().toString();
+          if (!yearMap.has(yr)) {
+            yearMap.set(yr, { name: yr, screenings: 0, refers: 0 });
+          }
+          const y = yearMap.get(yr)!;
           y.screenings++;
           if (s.overallResult === 'refer') {
             y.refers++;
@@ -424,6 +543,7 @@ export class DashboardService {
           registered: 0,
           screenings: 0,
           refers: 0,
+          passes: 0,
           pendingFollowUps: 0,
         });
       }
@@ -432,6 +552,7 @@ export class DashboardService {
       d.registered += 1;
       d.screenings += bScreenings;
       d.refers += bRefers;
+      d.passes += bPasses;
       d.pendingFollowUps += bPendingFollowUps;
 
       if (!stateMap.has(stateName)) {
@@ -441,6 +562,7 @@ export class DashboardService {
           registered: 0,
           screenings: 0,
           refers: 0,
+          passes: 0,
           pendingFollowUps: 0,
           males: 0,
           females: 0,
@@ -452,6 +574,7 @@ export class DashboardService {
       s.registered += 1;
       s.screenings += bScreenings;
       s.refers += bRefers;
+      s.passes += bPasses;
       s.pendingFollowUps += bPendingFollowUps;
       const gender = b.gender?.toLowerCase();
       if (gender === 'male') s.males += 1;
@@ -468,6 +591,7 @@ export class DashboardService {
             registered: 0,
             screenings: 0,
             refers: 0,
+            passes: 0,
             pendingFollowUps: 0,
             males: 0,
             females: 0,
@@ -479,6 +603,7 @@ export class DashboardService {
         ps.registered += 1;
         ps.screenings += bScreenings;
         ps.refers += bRefers;
+        ps.passes += bPasses;
         ps.pendingFollowUps += bPendingFollowUps;
         const gender = b.gender?.toLowerCase();
         if (gender === 'male') ps.males += 1;
@@ -493,17 +618,14 @@ export class DashboardService {
             name: rawParentDistrict || 'Unknown District',
             state: parentStateName,
             registered: 0,
-            boaPass: 0,
-            boaFail: 0,
+            passes: 0,
+            refers: 0,
           });
         }
         const pd = parentDistrictMap.get(distKey)!;
         pd.registered += 1;
-        // Count BOA results from all completed screenings for this baby
-        for (const sc of b.screenings) {
-          if (sc.boaResult === 'pass') pd.boaPass += 1;
-          else if (sc.boaResult === 'refer') pd.boaFail += 1;
-        }
+        pd.passes += bPasses;
+        pd.refers += bRefers;
       }
 
       if (!hospitalMap.has(b.hospitalId)) {
@@ -550,6 +672,7 @@ export class DashboardService {
         hospitals: s.hospitals.size,
         registered: s.registered,
         screenings: s.screenings,
+        passes: s.passes,
         refers: s.refers,
         referralRate: s.screenings ? Math.round((s.refers / s.screenings) * 100) + '%' : '0%',
         pendingFollowUps: s.pendingFollowUps,
@@ -564,6 +687,7 @@ export class DashboardService {
         hospitals: ps.hospitals.size,
         registered: ps.registered,
         screenings: ps.screenings,
+        passes: ps.passes,
         refers: ps.refers,
         referralRate: ps.screenings ? Math.round((ps.refers / ps.screenings) * 100) + '%' : '0%',
         pendingFollowUps: ps.pendingFollowUps,
@@ -577,10 +701,10 @@ export class DashboardService {
         name: pd.name,
         state: pd.state,
         registered: pd.registered,
-        boaPass: pd.boaPass,
-        boaFail: pd.boaFail,
+        passes: pd.passes,
+        refers: pd.refers,
       })),
-      monthlyData: Array.from(monthCounts.entries()).map(([name, value]) => ({ name, value })).slice(-6),
+      monthlyData: Array.from(trendCounts.entries()).map(([name, value]) => ({ name, value })),
       yearlyPerformance: Array.from(yearMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
       ageData: Object.entries(ageGroups).map(([name, value]) => ({ name, value })),
       followUpSuccessRate: totalFollowUps ? Number(((completedFollowUps / totalFollowUps) * 100).toFixed(1)) : 0,

@@ -21,7 +21,7 @@ interface IndiaMapProps {
   selectedState?: string;
 }
 
-const geoUrl = '/india-states.geojson';
+const geoUrl = '/india-full-map.geojson';
 
 export function IndiaMap({ data, onSelectState, selectedState }: IndiaMapProps) {
   const [tooltipContent, setTooltipContent] = useState<ReactNode>(null);
@@ -61,7 +61,7 @@ export function IndiaMap({ data, onSelectState, selectedState }: IndiaMapProps) 
         <Geographies geography={geoUrl}>
           {({ geographies }) =>
             geographies.map(geo => {
-              const stateName = geo.properties.name;
+              const stateName = geo.properties.name || geo.properties.st_nm;
               const stateData = data?.find(s => s.name === stateName);
               const isSelected = selectedState === stateName;
               

@@ -171,7 +171,7 @@ export default function ChildrenPage() {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const headers = ['Unique Mother ID', 'Baby Name', 'Gender', 'Age', "Mother's Name", 'Mobile Number', 'BOA Result'];
+    const headers = ['Unique Mother ID', 'Baby Name', 'Gender', 'Age', "Mother's Name", 'Mobile Number', 'Overall Result'];
     const rows = filtered.map((c) => {
       const s = getLatestScreening(c.id);
       return [
@@ -181,7 +181,7 @@ export default function ChildrenPage() {
         escape(calcAge(c.dateOfBirth)),
         escape(c.motherName),
         escape(c.contactNumber ?? ''),
-        escape(s?.boaResult ?? ''),
+        escape(s?.overallResult ?? s?.boaResult ?? ''),
       ].join(',');
     });
     const csv = [headers.join(','), ...rows].join('\n');
@@ -316,7 +316,7 @@ export default function ChildrenPage() {
                     { key: 'dateOfBirth', label: 'Age', sortable: true },
                     { key: 'motherName', label: "Mother's Name", sortable: true },
                     { key: 'contactNumber', label: 'Mobile Number', sortable: false },
-                    { key: 'boaResult', label: 'BOA Result', sortable: false },
+                    { key: 'overallResult', label: 'Overall Result', sortable: false },
                     { key: 'createdAt', label: 'Registered On', sortable: true },
                   ].map((col) => (
                     <th
@@ -336,7 +336,7 @@ export default function ChildrenPage() {
               <tbody className="divide-y divide-border">
                 {paginated.map((child) => {
                   const screening = getLatestScreening(child.id);
-                  const boa = boaLabel(screening?.boaResult);
+                  const boa = boaLabel(screening?.overallResult ?? screening?.boaResult);
                   return (
                     <tr
                       key={child.id}
@@ -379,7 +379,7 @@ export default function ChildrenPage() {
                         {child.contactNumber ?? '—'}
                       </td>
 
-                      {/* BOA Result */}
+                      {/* Overall Result */}
                       <td className="px-4 py-3">
                         <span
                           className={cn(

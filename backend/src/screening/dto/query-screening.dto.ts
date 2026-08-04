@@ -10,6 +10,10 @@ export class QueryScreeningDto {
   @ApiPropertyOptional() @IsOptional() @IsString() hospitalId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() districtId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() state?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  type?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() audiologistId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() babyId?: string;
 

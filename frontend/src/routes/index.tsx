@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { LoginPage } from '../features/auth/pages/LoginPage';
 import React, { Suspense } from 'react';
@@ -17,6 +17,8 @@ const AnalyticsPage = React.lazy(() => import('../features/analytics/AnalyticsPa
 const SettingsPage = React.lazy(() => import('../features/settings/SettingsPage'));
 const FollowUpsPage = React.lazy(() => import('../features/follow-ups/FollowUpsPage'));
 const StaffPage = React.lazy(() => import('../features/staff/StaffPage'));
+const ReScreeningPage = React.lazy(() => import('../features/rescreening/ReScreeningPage'));
+const StartReScreeningPage = React.lazy(() => import('../features/rescreening/StartReScreeningPage'));
 
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense
@@ -31,11 +33,20 @@ const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   </Suspense>
 );
 
+import { AuthProvider } from '../hooks/useAuth';
+
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
-  { path: '/', element: <Navigate to="/dashboard" replace /> },
   {
-    path: '/',
+    element: (
+      <AuthProvider>
+        <Outlet />
+      </AuthProvider>
+    ),
+    children: [
+      { path: '/login', element: <LoginPage /> },
+      { path: '/', element: <Navigate to="/dashboard" replace /> },
+      {
+        path: '/',
     element: <AppLayout />,
     children: [
       {
@@ -143,6 +154,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'rescreening',
+        element: (
+          <SuspenseWrapper>
+            <ReScreeningPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
+        path: 'rescreening/start/:id',
+        element: (
+          <SuspenseWrapper>
+            <StartReScreeningPage />
+          </SuspenseWrapper>
+        ),
+      },
+      {
         path: 'staff',
         element: (
           <SuspenseWrapper>
@@ -152,16 +179,18 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  {
-    path: '*',
-    element: (
-      <div className="p-8 text-center">
-        <h1 className="text-4xl font-bold">404</h1>
-        <p>Page Not Found</p>
-        <a href="/" className="text-primary mt-4 inline-block">
-          Go Home
-        </a>
-      </div>
-    ),
+      {
+        path: '*',
+        element: (
+          <div className="p-8 text-center">
+            <h1 className="text-4xl font-bold">404</h1>
+            <p>Page Not Found</p>
+            <a href="/" className="text-primary mt-4 inline-block">
+              Go Home
+            </a>
+          </div>
+        ),
+      },
+    ],
   },
 ]);

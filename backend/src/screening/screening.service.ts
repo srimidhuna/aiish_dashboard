@@ -14,6 +14,7 @@ export class ScreeningService {
     // cast once to the Prisma input type rather than fighting per-field enum typing.
     const where: Record<string, unknown> = {};
     if (query.status) where.status = query.status;
+    if (query.type) where.type = query.type;
     if (query.result) where.overallResult = query.result;
     if (query.audiologistId) where.assignedAudiologistId = query.audiologistId;
     if (query.babyId) where.babyId = query.babyId;

@@ -51,6 +51,7 @@ const schema = z.object({
   licenseNumber: z.string().min(1, 'License / Registration number is required'),
   yearsOfExperience: z.coerce.number({ invalid_type_error: 'Required' }).min(0, 'Cannot be negative').max(60),
   photoUrl: z.string().optional(),
+  address: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -281,6 +282,10 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
 
                 <LabeledField label="Email Address" error={errors.email?.message} className="col-span-2">
                   <Input type="email" {...register('email')} placeholder="staff@aiish.gov.in" className={cn('mt-1', errors.email && 'border-destructive')} />
+                </LabeledField>
+
+                <LabeledField label="Residential Address" error={errors.address?.message} className="col-span-2">
+                  <Input {...register('address')} placeholder="e.g. 123 Main St, City, State" className={cn('mt-1', errors.address && 'border-destructive')} />
                 </LabeledField>
               </div>
             </div>

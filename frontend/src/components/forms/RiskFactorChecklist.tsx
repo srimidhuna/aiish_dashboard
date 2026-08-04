@@ -7,9 +7,10 @@ interface RiskFactorChecklistProps {
   selectedIds: string[];
   onChange?: (ids: string[]) => void;
   readOnly?: boolean;
+  children?: React.ReactNode;
 }
 
-export function RiskFactorChecklist({ selectedIds, onChange, readOnly }: RiskFactorChecklistProps) {
+export function RiskFactorChecklist({ selectedIds, onChange, readOnly, children }: RiskFactorChecklistProps) {
   const { data: categories, isLoading } = useQuery({
     queryKey: ['risk-categories'],
     queryFn: () => mastersService.listRiskCategories(),
@@ -44,13 +45,14 @@ export function RiskFactorChecklist({ selectedIds, onChange, readOnly }: RiskFac
               checked={selectedIds.includes(rc.id)}
               onChange={() => toggle(rc.id)}
               disabled={readOnly}
-              className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+              className="mt-1 h-4 w-4 shrink-0 rounded border-input text-primary focus:ring-primary"
             />
             <label htmlFor={rc.id} className="text-sm font-medium leading-none">
               {rc.label}
             </label>
           </div>
         ))}
+        {children}
       </div>
     </div>
   );

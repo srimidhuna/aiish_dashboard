@@ -70,7 +70,10 @@ export class CreateBabyDto {
   @IsOptional()
   @IsIn(EDUCATION_LEVEL)
   educationLevel?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() educationLevelOther?: string;
+  
   @ApiPropertyOptional({ enum: RELIGION }) @IsOptional() @IsIn(RELIGION) religion?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() religionOther?: string;
   @ApiPropertyOptional({ enum: SOCIO_ECONOMIC_STATUS })
   @IsOptional()
   @IsIn(SOCIO_ECONOMIC_STATUS)
