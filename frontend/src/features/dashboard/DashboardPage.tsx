@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useTheme } from '../../components/ThemeProvider';
+import { INDIA_STATES } from '../../lib/locationData';
 import { IndiaMap, StateData } from './components/IndiaMap';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
@@ -251,14 +252,6 @@ export default function DashboardPage() {
     color: isDark ? ageColorsDark[i % ageColorsDark.length] : ageColorsLight[i % ageColorsLight.length]
   }));
 
-  // Max screenings for progress bar scaling (based on mapStateRows = parentStatePerformance)
-  const maxScreenings = Math.max(...mapStateRows.map(s => s.screenings), 1);
-
-  // Progress bar colors per state row
-  const stateBarColors = isDark 
-    ? ['#5c60a6', '#7d63a6', '#ab5e85', '#b38342', '#488f72']
-    : ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
-
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
 
@@ -392,7 +385,7 @@ export default function DashboardPage() {
           sparkColor="#ef4444" sparkId="highrisk" sparkValue={overview?.highRiskBabies ?? 0}
         />
         <StatCard
-          label="Today's Screenings" value={overview?.todaysScreenings ?? 0}
+          label={dateParams.day ? "Selected Day Screenings" : "Today's Screenings"} value={overview?.todaysScreenings ?? 0}
           iconBg="bg-sky-100" icon={<Activity className="h-5 w-5 text-sky-500" />}
           trend={`↑9%`} trendColor="bg-emerald-100 text-emerald-600"
           sparkColor="#0ea5e9" sparkId="screenings" sparkValue={overview?.todaysScreenings ?? 0}
@@ -405,7 +398,7 @@ export default function DashboardPage() {
           sparkColor="#f59e0b" sparkId="rescreening" sparkValue={overview?.rescreeningRequired ?? 0}
         />
         <StatCard
-          label="Today's Follow-ups" value={overview?.todaysFollowUps ?? 0}
+          label={dateParams.day ? "Selected Day Follow-ups" : "Today's Follow-ups"} value={overview?.todaysFollowUps ?? 0}
           iconBg="bg-purple-100" icon={<Clock className="h-5 w-5 text-purple-600" />}
           trend={`↑3%`} trendColor="bg-emerald-100 text-emerald-600"
           sparkColor="#a855f7" sparkId="todaysFollowUps" sparkValue={overview?.todaysFollowUps ?? 0}
@@ -437,7 +430,7 @@ export default function DashboardPage() {
       {/* ── Middle Row: Map | State Summary ── */}
       <div className="grid grid-cols-12 gap-4">
 
-        <div className="col-span-7 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="col-span-7 bg-card rounded-2xl border border-border shadow-sm">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
             <div>
               <div className="flex items-center gap-2">
@@ -459,15 +452,18 @@ export default function DashboardPage() {
               )}
               <select
                 className="text-xs border border-border rounded-lg px-2 py-1.5 bg-card text-foreground"
-                value={selectedState ?? ''}
+                value={selectedState?.toUpperCase() ?? ''}
                 onChange={(e) => {
                   const v = e.target.value;
-                  setSearchParams((p) => { if (v) p.set('state', v); else p.delete('state'); return p; });
+                  // Convert back to Title Case for search params to match backend
+                  const titleCased = v.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                  setSearchParams((p) => { if (v) p.set('state', titleCased); else p.delete('state'); return p; });
                 }}
               >
                 <option value="">All States</option>
-                {mapStateRows.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                {INDIA_STATES.map((s) => <option key={s} value={s}>{s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}</option>)}
               </select>
+
             </div>
           </div>
           <div className="relative" style={{ height: '340px' }}>
@@ -520,7 +516,7 @@ export default function DashboardPage() {
               /* ── District-wise table when a state is selected ── */
               (() => {
                 const districts = parentDistrictRows.filter(
-                  (d) => d.state === selectedState
+                  (d) => d.state?.toUpperCase() === selectedState?.toUpperCase()
                 );
                 return (
                   <table className="w-full text-xs">

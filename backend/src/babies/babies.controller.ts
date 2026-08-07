@@ -17,6 +17,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { RolesGuard } from '@/common/guards/roles.guard';
+import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayload } from '@/auth/strategies/jwt.strategy';
 import { BabiesService } from '@/babies/babies.service';
@@ -35,7 +37,11 @@ export class BabiesController {
   @ApiOperation({ summary: 'List babies (filterable)' })
   @ApiOkResponse({ description: 'Array of babies' })
   @ApiUnauthorizedResponse({ description: 'Not authenticated' })
-  findAll(@Query() query: QueryBabiesDto) {
+  findAll(@Query() query: QueryBabiesDto, @CurrentUser() user: JwtPayload) {
+    // Staff (audiologist) can only see babies from their own hospital
+    if (user.role === 'audiologist' && user.hospitalId) {
+      query.hospitalId = user.hospitalId;
+    }
     return this.babiesService.list(query);
   }
 
@@ -68,7 +74,9 @@ export class BabiesController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft-delete a baby' })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Soft-delete a baby (admin only)' })
   @ApiOkResponse({ description: 'Deletion confirmation' })
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.babiesService.remove(id, user.sub);

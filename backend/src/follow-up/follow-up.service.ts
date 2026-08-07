@@ -15,6 +15,19 @@ export class FollowUpService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(query: QueryFollowUpDto) {
+    // ── Auto-mark overdue follow-ups as 'missed' ──────────────────────────────
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    await this.prisma.followUp.updateMany({
+      where: {
+        status: { in: ['scheduled', 'rescheduled'] },
+        scheduledDate: { lt: startOfToday },
+      },
+      data: { status: 'missed' },
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     const where: Record<string, unknown> = {};
     if (query.status) where.status = query.status;
     if (query.babyId) where.babyId = query.babyId;
@@ -32,6 +45,7 @@ export class FollowUpService {
       orderBy: { scheduledDate: 'asc' },
     });
   }
+
 
   async getByBabyId(babyId: string) {
     return this.prisma.followUp.findMany({

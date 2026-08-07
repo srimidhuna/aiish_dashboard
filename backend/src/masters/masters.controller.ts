@@ -119,14 +119,18 @@ export class MastersController {
   }
 
   @Post('staff')
-  @ApiOperation({ summary: 'Register a new staff member' })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Register a new staff member (admin only)' })
   @ApiOkResponse({ description: 'Created staff member' })
   createStaff(@Body() dto: CreateStaffDto) {
     return this.mastersService.createStaff(dto);
   }
 
   @Delete('staff/:id')
-  @ApiOperation({ summary: 'Remove a staff member' })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Remove a staff member (admin only)' })
   @ApiOkResponse({ description: 'Deletion confirmation' })
   deleteStaff(@Param('id') id: string) {
     return this.mastersService.deleteStaff(id);

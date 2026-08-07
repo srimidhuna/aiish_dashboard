@@ -44,6 +44,7 @@ export interface HighRiskBaby {
 
 export interface TodaysFollowUp {
   id: string;
+  childId: string;
   firstName: string;
   lastName: string;
   hospital: string;

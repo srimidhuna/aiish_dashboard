@@ -136,15 +136,20 @@ export class DashboardService {
     const babyWhere = dateFilter ? { deletedAt: null, createdAt: dateFilter } : { deletedAt: null };
     const screeningWhere = dateFilter ? { status: 'completed', testedAt: dateFilter } : { status: 'completed' };
     const followUpWhere = dateFilter ? { status: { in: ['scheduled', 'rescheduled'] }, scheduledDate: dateFilter } : { status: { in: ['scheduled', 'rescheduled'] } };
-    
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
+    // Use the selected date range for screenings/rescreening KPI cards if a date
+    // filter is active, otherwise fall back to actual today's range.
+    const selectedDayRange = dateFilter ?? { gte: startOfToday, lte: endOfToday };
+
+    // todaysFollowUps panel still always shows the real today.
     const includestoday = this.filterIncludesToday(year, month, day);
-    const todaysRange = includestoday 
-      ? { gte: startOfToday, lte: endOfToday } 
+    const todaysFollowUpRange = includestoday
+      ? { gte: startOfToday, lte: endOfToday }
       : { gte: new Date('1970-01-01'), lte: new Date('1970-01-01') };
 
     const [
@@ -163,28 +168,28 @@ export class DashboardService {
     ] = await Promise.all([
       this.prisma.baby.count({ where: babyWhere as any }),
       this.prisma.baby.count({
-        where: { deletedAt: null, createdAt: todaysRange },
+        where: { deletedAt: null, createdAt: selectedDayRange },
       }),
       this.prisma.screening.count({
-        where: { status: 'completed', testedAt: todaysRange },
+        where: { status: 'completed', testedAt: selectedDayRange },
       }),
       this.prisma.screening.count({
-        where: { status: 'completed', testedAt: todaysRange, overallResult: 'pass' },
+        where: { status: 'completed', testedAt: selectedDayRange, overallResult: 'pass' },
       }),
       this.prisma.screening.count({
-        where: { status: 'completed', testedAt: todaysRange, overallResult: 'refer' },
+        where: { status: 'completed', testedAt: selectedDayRange, overallResult: 'refer' },
       }),
       this.prisma.screening.count({ where: screeningWhere as any }),
       this.prisma.screening.count({ where: { ...screeningWhere, overallResult: 'refer' } as any }),
       this.prisma.hospital.count({ where: { status: 'active' } }),
       this.prisma.followUp.count({ where: followUpWhere as any }),
-      this.prisma.followUp.count({ where: { scheduledDate: todaysRange } }),
+      this.prisma.followUp.count({ where: { status: { in: ['scheduled', 'rescheduled'] }, scheduledDate: todaysFollowUpRange } }),
       this.prisma.baby.count({ where: { ...babyWhere, riskFactors: { some: {} } } as any }),
       this.prisma.screening.count({
         where: {
           status: 'completed',
           type: 'rescreening',
-          testedAt: todaysRange,
+          testedAt: selectedDayRange,
         },
       }),
     ]);
@@ -709,6 +714,83 @@ export class DashboardService {
       ageData: Object.entries(ageGroups).map(([name, value]) => ({ name, value })),
       followUpSuccessRate: totalFollowUps ? Number(((completedFollowUps / totalFollowUps) * 100).toFixed(1)) : 0,
       referralConversionRate: totalReferredBabies ? Number(((referredBabiesWithCompletedFollowUp / totalReferredBabies) * 100).toFixed(1)) : 0,
+    };
+  }
+
+  /**
+   * Staff (audiologist) dashboard — returns KPIs scoped to a single hospital.
+   */
+  async getStaffOverview(hospitalId: string) {
+    const today = new Date();
+    const startOfToday = new Date(today);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(today);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const [
+      todaysScreenings,
+      rescreeningRequired,
+      todaysFollowUps,
+      recentChildren,
+    ] = await Promise.all([
+      // 1. Today's Screenings
+      this.prisma.screening.count({
+        where: {
+          status: 'completed',
+          testedAt: { gte: startOfToday, lte: endOfToday },
+          baby: { hospitalId },
+        },
+      }),
+      // 2. Reappearing for Screening (completed rescreenings today)
+      this.prisma.screening.count({
+        where: {
+          status: 'completed',
+          type: 'rescreening',
+          testedAt: { gte: startOfToday, lte: endOfToday },
+          baby: { hospitalId },
+        },
+      }),
+      // 3. Today's Follow-ups
+      this.prisma.followUp.count({
+        where: {
+          status: { in: ['scheduled', 'rescheduled'] },
+          scheduledDate: { gte: startOfToday, lte: endOfToday },
+          baby: { hospitalId },
+        },
+      }),
+      // Last 10 registered children at this hospital (for quick list)
+      this.prisma.baby.findMany({
+        where: { deletedAt: null, hospitalId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          mrNumber: true,
+          createdAt: true,
+          screenings: {
+            orderBy: { testedAt: 'desc' },
+            take: 1,
+            select: { status: true, overallResult: true },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      todaysScreenings,
+      rescreeningRequired,
+      todaysFollowUps,
+      recentChildren: recentChildren.map((b) => ({
+        id: b.id,
+        firstName: b.firstName,
+        lastName: b.lastName,
+        mrNumber: b.mrNumber,
+        registeredAt: b.createdAt,
+        lastScreeningStatus: b.screenings[0]?.status ?? null,
+        lastScreeningResult: b.screenings[0]?.overallResult ?? null,
+      })),
     };
   }
 }

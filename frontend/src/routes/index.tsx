@@ -1,10 +1,11 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
+import { RoleGuard } from '../components/layout/RoleGuard';
 import { LoginPage } from '../features/auth/pages/LoginPage';
 import React, { Suspense } from 'react';
 import { Skeleton } from '../components/ui/Skeleton';
 
-const DashboardPage = React.lazy(() => import('../features/dashboard/DashboardPage'));
+const DashboardRouter = React.lazy(() => import('../features/dashboard/DashboardRouter'));
 const ChildrenPage = React.lazy(() => import('../features/children/ChildrenPage'));
 const RegisterChildPage = React.lazy(() => import('../features/children/RegisterChildPage'));
 const ChildDetailsPage = React.lazy(() => import('../features/children/ChildDetailsPage'));
@@ -14,7 +15,6 @@ const HospitalsPage = React.lazy(() => import('../features/hospitals/HospitalsPa
 const HospitalDetailsPage = React.lazy(() => import('../features/hospitals/HospitalDetailsPage'));
 const ProfilePage = React.lazy(() => import('../features/profile/ProfilePage'));
 const AnalyticsPage = React.lazy(() => import('../features/analytics/AnalyticsPage'));
-const SettingsPage = React.lazy(() => import('../features/settings/SettingsPage'));
 const FollowUpsPage = React.lazy(() => import('../features/follow-ups/FollowUpsPage'));
 const StaffPage = React.lazy(() => import('../features/staff/StaffPage'));
 const ReScreeningPage = React.lazy(() => import('../features/rescreening/ReScreeningPage'));
@@ -47,138 +47,142 @@ export const router = createBrowserRouter([
       { path: '/', element: <Navigate to="/dashboard" replace /> },
       {
         path: '/',
-    element: <AppLayout />,
-    children: [
-      {
-        path: 'dashboard',
-        element: (
-          <SuspenseWrapper>
-            <DashboardPage />
-          </SuspenseWrapper>
-        ),
+        element: <AppLayout />,
+        children: [
+          {
+            path: 'dashboard',
+            element: (
+              <SuspenseWrapper>
+                <DashboardRouter />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'children',
+            element: (
+              <SuspenseWrapper>
+                <ChildrenPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'children/register',
+            element: (
+              <SuspenseWrapper>
+                <RegisterChildPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'children/:id/edit',
+            element: (
+              <SuspenseWrapper>
+                <RegisterChildPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'children/:id',
+            element: (
+              <SuspenseWrapper>
+                <ChildDetailsPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'screenings',
+            element: (
+              <SuspenseWrapper>
+                <ScreeningQueuePage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'screenings/new',
+            element: (
+              <SuspenseWrapper>
+                <ScreeningFormPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'rescreening',
+            element: (
+              <SuspenseWrapper>
+                <ReScreeningPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'rescreening/start/:id',
+            element: (
+              <SuspenseWrapper>
+                <StartReScreeningPage />
+              </SuspenseWrapper>
+            ),
+          },
+          // ─── Admin-only routes ─────────────────────────────────────────────
+          {
+            path: 'hospitals',
+            element: (
+              <SuspenseWrapper>
+                <RoleGuard allowedRoles={['admin']}>
+                  <HospitalsPage />
+                </RoleGuard>
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'hospitals/:id',
+            element: (
+              <SuspenseWrapper>
+                <RoleGuard allowedRoles={['admin']}>
+                  <HospitalDetailsPage />
+                </RoleGuard>
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'analytics',
+            element: (
+              <SuspenseWrapper>
+                <RoleGuard allowedRoles={['admin']}>
+                  <AnalyticsPage />
+                </RoleGuard>
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'follow-ups',
+            element: (
+              <SuspenseWrapper>
+                <RoleGuard allowedRoles={['admin']}>
+                  <FollowUpsPage />
+                </RoleGuard>
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'staff',
+            element: (
+              <SuspenseWrapper>
+                <RoleGuard allowedRoles={['admin']}>
+                  <StaffPage />
+                </RoleGuard>
+              </SuspenseWrapper>
+            ),
+          },
+          // ─── Shared routes ─────────────────────────────────────────────────
+          {
+            path: 'profile',
+            element: (
+              <SuspenseWrapper>
+                <ProfilePage />
+              </SuspenseWrapper>
+            ),
+          },
+        ],
       },
-      {
-        path: 'children',
-        element: (
-          <SuspenseWrapper>
-            <ChildrenPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'children/register',
-        element: (
-          <SuspenseWrapper>
-            <RegisterChildPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'children/:id/edit',
-        element: (
-          <SuspenseWrapper>
-            <RegisterChildPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'children/:id',
-        element: (
-          <SuspenseWrapper>
-            <ChildDetailsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'screenings',
-        element: (
-          <SuspenseWrapper>
-            <ScreeningQueuePage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'screenings/new',
-        element: (
-          <SuspenseWrapper>
-            <ScreeningFormPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'hospitals',
-        element: (
-          <SuspenseWrapper>
-            <HospitalsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'hospitals/:id',
-        element: (
-          <SuspenseWrapper>
-            <HospitalDetailsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'profile',
-        element: (
-          <SuspenseWrapper>
-            <ProfilePage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'analytics',
-        element: (
-          <SuspenseWrapper>
-            <AnalyticsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'settings',
-        element: (
-          <SuspenseWrapper>
-            <SettingsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'follow-ups',
-        element: (
-          <SuspenseWrapper>
-            <FollowUpsPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'rescreening',
-        element: (
-          <SuspenseWrapper>
-            <ReScreeningPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'rescreening/start/:id',
-        element: (
-          <SuspenseWrapper>
-            <StartReScreeningPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: 'staff',
-        element: (
-          <SuspenseWrapper>
-            <StaffPage />
-          </SuspenseWrapper>
-        ),
-      },
-    ],
-  },
       {
         path: '*',
         element: (

@@ -5,8 +5,9 @@ import { followUpsService, childrenService } from '../../services/api';
 import type { FollowUp } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+
 import { FollowUpDialog } from './FollowUpDialog';
+import { ChildDetailsDialog } from './ChildDetailsDialog';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { EmptyState } from '../../components/shared/EmptyState';
@@ -21,6 +22,9 @@ export default function FollowUpsPage() {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedFollowUp, setSelectedFollowUp] = useState<any>(null);
+
+  const [childDetailsOpen, setChildDetailsOpen] = useState(false);
+  const [selectedChildForDetails, setSelectedChildForDetails] = useState<any>(null);
 
   const queryClient = useQueryClient();
 
@@ -73,9 +77,19 @@ export default function FollowUpsPage() {
 
   const filteredFollowUps = followUps
     ?.filter((f: FollowUp) => {
-      if (activeTab === 'Upcoming') return f.status === 'scheduled' || f.status === 'rescheduled';
+      const fDate = new Date(f.scheduledDate);
+      fDate.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isPast = fDate.getTime() < today.getTime();
+
+      if (activeTab === 'Upcoming') {
+        return (f.status === 'scheduled' || f.status === 'rescheduled') && !isPast;
+      }
       if (activeTab === 'Completed') return f.status === 'completed';
-      if (activeTab === 'Missed') return f.status === 'missed' || f.status === 'lost_to_followup';
+      if (activeTab === 'Missed') {
+        return f.status === 'missed' || f.status === 'lost_to_followup' || ((f.status === 'scheduled' || f.status === 'rescheduled') && isPast);
+      }
       
       const child = getChild(f.childId);
       if (activeTab === 'Message') return !!child?.whatsappNumber;
@@ -291,12 +305,17 @@ export default function FollowUpsPage() {
                         {new Date(f.scheduledDate).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4">
-                        <Link
-                          to={`/children/${f.childId}`}
-                          className="text-primary hover:underline font-medium"
+                        <button
+                          onClick={() => {
+                            if (child) {
+                              setSelectedChildForDetails(child);
+                              setChildDetailsOpen(true);
+                            }
+                          }}
+                          className="text-primary hover:underline font-medium text-left"
                         >
                           {child ? `${child.firstName} ${child.lastName}` : 'Unknown Child'}
-                        </Link>
+                        </button>
                       </td>
                       <td className="px-6 py-4">
                         {child?.motherName || '-'}
@@ -362,6 +381,12 @@ export default function FollowUpsPage() {
         isOpen={dialogOpen}
         onClose={() => setDialogOpen(false)}
         initialData={selectedFollowUp}
+      />
+
+      <ChildDetailsDialog
+        isOpen={childDetailsOpen}
+        onClose={() => setChildDetailsOpen(false)}
+        child={selectedChildForDetails}
       />
     </div>
   );

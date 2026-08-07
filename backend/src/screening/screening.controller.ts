@@ -25,7 +25,11 @@ export class ScreeningController {
   @ApiOperation({ summary: 'List screenings (filterable)' })
   @ApiOkResponse({ description: 'Array of screenings' })
   @ApiUnauthorizedResponse({ description: 'Not authenticated' })
-  findAll(@Query() query: QueryScreeningDto) {
+  findAll(@Query() query: QueryScreeningDto, @CurrentUser() user: JwtPayload) {
+    // Staff (audiologist) can only see screenings from their own hospital
+    if (user.role === 'audiologist' && user.hospitalId) {
+      query.hospitalId = user.hospitalId;
+    }
     return this.screeningService.list(query);
   }
 

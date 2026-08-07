@@ -3,7 +3,7 @@ import type { UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-
 import { FormSection } from './FormSection';
 import { EarResultSelector } from './EarResultSelector';
 import { TestHeader } from './TestHeader';
-import { Calendar, AlertCircle, CheckCircle2, ChevronRight, Clock } from 'lucide-react';
+import { Calendar, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 /** Returns true when a result value is anything other than 'pass' AND is actually set */
@@ -47,96 +47,6 @@ function StepBadge({ label, status }: StepBadgeProps) {
   );
 }
 
-// ─── Schedule Modal ───────────────────────────────────────────────────────────
-interface ScheduleModalProps {
-  open: boolean;
-  onClose: () => void;
-  date: string;
-  onDateChange: (d: string) => void;
-  onConfirm: () => void;
-}
-function ScheduleModal({ open, onClose, date, onDateChange, onConfirm }: ScheduleModalProps) {
-  if (!open) return null;
-
-  const minDate = new Date();
-  minDate.setDate(minDate.getDate() + 1);
-  const minDateStr = minDate.toISOString().split('T')[0];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-md bg-card rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header gradient */}
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <AlertCircle className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-white font-bold text-lg leading-tight">All Tests Refer / Not Passed</h3>
-              <p className="text-amber-100 text-xs mt-0.5">A follow-up visit needs to be scheduled</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="px-6 py-5 space-y-4">
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-            <p className="font-medium mb-1">Screening Result: Refer on all tests</p>
-            <p className="text-xs text-amber-700">
-              The child did not pass any screening test in this session (BOA → TEOAE → DPOAE → AABR 1st → AABR 2nd).
-              Please schedule a repeat screening visit.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-foreground">
-              <Clock className="inline h-4 w-4 mr-1 text-indigo-500" />
-              Select Follow-up Date <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="date"
-              min={minDateStr}
-              value={date}
-              onChange={(e) => onDateChange(e.target.value)}
-              className="flex h-10 w-full rounded-lg border-2 border-indigo-200 dark:border-indigo-800 bg-background px-3 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
-            />
-            {!date && (
-              <p className="text-xs text-red-500">Please choose a date to proceed</p>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 pb-5 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 h-10 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!date}
-            onClick={onConfirm}
-            className="flex-1 h-10 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}
-          >
-            <Calendar className="inline h-4 w-4 mr-1.5" />
-            Schedule Visit
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ScreeningStepProps {
@@ -148,8 +58,6 @@ interface ScreeningStepProps {
   setValue: UseFormSetValue<any>;
   followUpDate: string;
   setFollowUpDate: (d: string) => void;
-  showScheduleModal: boolean;
-  setShowScheduleModal: (v: boolean) => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -159,21 +67,17 @@ export function ScreeningStep({
   setValue,
   followUpDate,
   setFollowUpDate,
-  showScheduleModal,
-  setShowScheduleModal,
 }: ScreeningStepProps) {
-  const boa       = watch('boaResult')   as string | undefined;
+  const boa           = watch('boaResult')       as string | undefined;
   const oaeTestSelection = watch('oaeTestSelection') as string | undefined;
-  const teoaeR    = watch('teoaeRight')  as string | undefined;
-  const teoaeL    = watch('teoaeLeft')   as string | undefined;
-  const dpoaeR    = watch('dpoaeRight')  as string | undefined;
-  const dpoaeL    = watch('dpoaeLeft')   as string | undefined;
-  const aabr1R    = watch('aabr1Right')  as string | undefined;
-  const aabr1L    = watch('aabr1Left')   as string | undefined;
+  const teoaeR        = watch('teoaeRight')      as string | undefined;
+  const teoaeL        = watch('teoaeLeft')       as string | undefined;
+  const dpoaeR        = watch('dpoaeRight')      as string | undefined;
+  const dpoaeL        = watch('dpoaeLeft')       as string | undefined;
+  const aabr1R        = watch('aabr1Right')      as string | undefined;
+  const aabr1L        = watch('aabr1Left')       as string | undefined;
 
   // Cascade visibility rules
-  const boaPassed     = boa === 'pass';
-  
   const showTeoae     = oaeTestSelection === 'TEOAE';
   const showDpoae     = oaeTestSelection === 'DPOAE';
   
@@ -274,7 +178,7 @@ export function ScreeningStep({
           />
         </div>
         <div className="px-5 py-4">
-          <label className="text-sm font-medium mb-3 block">Choose the OAE test to perform: *</label>
+          <label className="text-sm font-medium mb-3 block">Choose the OAE test to perform: <span className="text-muted-foreground text-xs font-normal">(Optional)</span></label>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="radio" value="TEOAE" {...register('oaeTestSelection')} className="w-4 h-4 text-indigo-600 border-border" />
@@ -363,7 +267,10 @@ export function ScreeningStep({
 
 
 
-      {/* ── Overall result (auto-set, read-only display) ── */}
+      {/* ── Overall result (auto-set, read-only display) — only shown when tests have been entered ── */}
+      {/* Hidden field always registered so form state is always valid regardless of BOA selection */}
+      <input type="hidden" {...register('overallResult')} />
+
       {boa && (
         <div className="rounded-xl border border-border bg-card shadow-sm px-5 py-4">
           <p className="text-sm font-semibold text-foreground mb-2">Overall Screening Result</p>
@@ -390,10 +297,13 @@ export function ScreeningStep({
               <span className="text-sm text-muted-foreground">Awaiting test results…</span>
             </div>
           )}
-          {/* Hidden field to carry the value into the form */}
-          <input type="hidden" {...register('overallResult')} />
         </div>
       )}
+
+      {/* Informational note that all screening is optional */}
+      <p className="text-xs text-muted-foreground text-center pt-1">
+        All screening tests on this step are optional. You can register the child now and record screening results later.
+      </p>
     </div>
   );
 }

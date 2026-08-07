@@ -3023,7 +3023,7 @@ export const locationData: Record<string, Record<string, string[]>> = {
   }
 };
 
-export const INDIA_STATES = Object.keys(locationData).sort();
+export const INDIA_STATES = Object.keys(locationData).filter(state => state !== 'NA').sort();
 
 export function getDistrictsForState(stateName: string): string[] {
   if (!stateName || !locationData[stateName]) return [];

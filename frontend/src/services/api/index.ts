@@ -21,4 +21,5 @@ export type {
 } from './analyticsService';
 export { staffService } from './staffService';
 export type { StaffMember, CreateStaffPayload } from './staffService';
-
+export { staffDashboardService } from './staffDashboardService';
+export type { StaffDashboardOverview } from './staffDashboardService';

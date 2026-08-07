@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ import { useDefaultLocationFilters } from '../../hooks/useDefaultLocationFilters
 import { cn } from '../../lib/utils';
 import { getDistrictsForState, getTaluksForDistrict, INDIA_STATES } from '../../lib/locationData';
 import { ScreeningStep } from '../../components/forms/ScreeningStep';
+import { useAuth } from '../../hooks/useAuth';
 
 const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done']);
 const passReferOnly = z.enum(['pass', 'refer', 'cnt', 'not_done']);
@@ -34,18 +35,13 @@ const schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   dateOfBirth: z.string().min(1, 'Required'),
-  timeOfBirth: z.string().optional(),
   gender: z.enum(['male', 'female', 'other']),
-  birthWeightGrams: z.coerce.number().min(0, 'Invalid weight').optional(),
-  gestationalAgeWeeks: z.coerce.number().min(20).max(45).optional(),
-  placeOfBirth: z.string().optional(),
 
   motherName: z.string().min(1, 'Required'),
   fatherName: z.string().optional(),
   contactNumber: z.string().min(10, 'Invalid number'),
   whatsappNumber: z.string().optional(),
   phone2: z.string().optional(),
-  email: z.string().email('Invalid email').optional().or(z.literal('')),
   address: z.string().optional(),
   taluk: z.string().optional(),
   pinCode: z.string().optional(),
@@ -84,17 +80,17 @@ const schema = z.object({
   reflexPlantar: z.enum(['normal', 'abnormal']).optional(),
 
   entFindings: z.string().optional(),
-  boaResult: passReferOnly.optional().or(z.literal('')),
-  oaeTestSelection: z.enum(['TEOAE', 'DPOAE']).optional().or(z.literal('')),
-  teoaeRight: testResult.optional().or(z.literal('')),
-  teoaeLeft: testResult.optional().or(z.literal('')),
-  dpoaeRight: testResult.optional().or(z.literal('')),
-  dpoaeLeft: testResult.optional().or(z.literal('')),
-  aabr1Right: passReferOnly.optional().or(z.literal('')),
-  aabr1Left: passReferOnly.optional().or(z.literal('')),
-  aabr2Right: passReferOnly.optional().or(z.literal('')),
-  aabr2Left: passReferOnly.optional().or(z.literal('')),
-  overallResult: z.enum(['pass', 'refer']).optional().or(z.literal('')),
+  boaResult: passReferOnly.nullish().or(z.literal('')),
+  oaeTestSelection: z.enum(['TEOAE', 'DPOAE']).nullish().or(z.literal('')),
+  teoaeRight: testResult.nullish().or(z.literal('')),
+  teoaeLeft: testResult.nullish().or(z.literal('')),
+  dpoaeRight: testResult.nullish().or(z.literal('')),
+  dpoaeLeft: testResult.nullish().or(z.literal('')),
+  aabr1Right: passReferOnly.nullish().or(z.literal('')),
+  aabr1Left: passReferOnly.nullish().or(z.literal('')),
+  aabr2Right: passReferOnly.nullish().or(z.literal('')),
+  aabr2Left: passReferOnly.nullish().or(z.literal('')),
+  overallResult: z.enum(['pass', 'refer']).nullish().or(z.literal('')),
 
   remarks: z.string().optional(),
 });
@@ -130,11 +126,11 @@ export default function RegisterChildPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [hrrFindings, setHrrFindings] = useState<'no_hrr' | 'hrr'>('no_hrr');
   const defaults = useDefaultLocationFilters();
+  const { nbsCentre } = useAuth();
   const [location, setLocation] = useState<LocationFilterValue>({});
   const [guardianPhotoPreview, setGuardianPhotoPreview] = useState<string | null>(null);
   const guardianPhotoRef = useRef<HTMLInputElement>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
 
   const {
@@ -146,11 +142,11 @@ export default function RegisterChildPage() {
     getValues,
     reset,
     watch,
-    control,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       gender: 'male',
+      nbsCentre: nbsCentre || '',
       riskFactorIds: [],
       familyHistoryHearingLoss: false,
       caregiverConcern: false,
@@ -185,7 +181,7 @@ export default function RegisterChildPage() {
     const hasRiskFactor =
       (riskFactorIds && riskFactorIds.length > 0) ||
       familyHistoryHearingLoss ||
-      (consanguinityDegree && consanguinityDegree !== '');
+      !!consanguinityDegree;
 
     if (hasRiskFactor) {
       setHrrFindings('hrr');
@@ -619,6 +615,7 @@ export default function RegisterChildPage() {
                 <label className="text-sm font-medium">Date of Birth *</label>
                 <Input
                   type="date"
+                  max={new Date().toISOString().split('T')[0]}
                   {...register('dateOfBirth')}
                   className={cn(errors.dateOfBirth && 'border-destructive')}
                 />
@@ -631,23 +628,6 @@ export default function RegisterChildPage() {
                 <div className="flex h-9 w-full items-center rounded-md border border-input bg-muted px-3 text-sm mt-1 text-muted-foreground">
                   {babyAge ?? '—'}
                 </div>
-              </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Time of Birth</label>
-                <Input type="time" {...register('timeOfBirth')} />
-              </div>
-
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Birth Weight (g)</label>
-                <Input type="number" {...register('birthWeightGrams')} />
-              </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Gestational Age (weeks)</label>
-                <Input type="number" {...register('gestationalAgeWeeks')} />
-              </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium">Place of Birth <span className="text-xs text-muted-foreground font-normal ml-1">e.g. Rajiv Gandhi Government General Hospital, Chennai</span></label>
-                <Input {...register('placeOfBirth')} />
               </div>
 
               <input type="hidden" {...register('hospitalOfBirthId')} />
@@ -691,11 +671,6 @@ export default function RegisterChildPage() {
               <div className="col-span-3">
                 <label className="text-sm font-medium">Alternate Phone</label>
                 <Input {...register('phone2')} />
-              </div>
-
-              <div className="col-span-3">
-                <label className="text-sm font-medium">Email Address</label>
-                <Input type="email" {...register('email')} />
               </div>
               <div className="col-span-6">
                 <label className="text-sm font-medium">Address *</label>
@@ -1114,10 +1089,6 @@ export default function RegisterChildPage() {
                   <Row label="Last Name" value={v.lastName} />
                   <Row label="Gender" value={v.gender ? v.gender.charAt(0).toUpperCase() + v.gender.slice(1) : undefined} />
                   <Row label="Date of Birth" value={v.dateOfBirth} />
-                  <Row label="Time of Birth" value={v.timeOfBirth} />
-                  <Row label="Birth Weight (g)" value={v.birthWeightGrams} />
-                  <Row label="Gestational Age (weeks)" value={v.gestationalAgeWeeks} />
-                  <Row label="Place of Birth" value={v.placeOfBirth} />
                 </div>
 
                 {/* Step 2 — Parent Info */}
@@ -1127,7 +1098,6 @@ export default function RegisterChildPage() {
                   <Row label="Father's Name" value={v.fatherName} />
                   <Row label="Mobile Number" value={v.contactNumber} />
                   <Row label="Alternate Phone" value={v.phone2} />
-                  <Row label="Email" value={v.email} />
                   <Row label="Address" value={v.address} />
                   <Row label="Taluk" value={v.taluk} />
                   <Row label="District" value={v.parentDistrict} />
@@ -1270,8 +1240,6 @@ export default function RegisterChildPage() {
               setValue={setValue}
               followUpDate={followUpDate}
               setFollowUpDate={setFollowUpDate}
-              showScheduleModal={showScheduleModal}
-              setShowScheduleModal={setShowScheduleModal}
             />
           )}
 

@@ -159,6 +159,11 @@ export interface Screening {
   type?: 'initial' | 'rescreening';
   dueDate?: string;
   assignedAudiologistId?: string;
+  assignedAudiologist?: {
+    id: string;
+    fullName: string;
+    email: string;
+  };
 
   entFindings?: string;
   boaResult?: TestResult;

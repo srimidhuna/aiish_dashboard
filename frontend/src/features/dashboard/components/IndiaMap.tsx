@@ -47,7 +47,7 @@ export function IndiaMap({ data, onSelectState, selectedState }: IndiaMapProps) 
   }, [maxRegistered, theme]);
 
   return (
-    <div className="w-full h-full relative" data-tooltip-id="map-tooltip">
+    <div className="w-full h-full relative">
       <ComposableMap
         projection="geoMercator"
         projectionConfig={{
@@ -69,6 +69,7 @@ export function IndiaMap({ data, onSelectState, selectedState }: IndiaMapProps) 
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
+                  data-tooltip-id="map-tooltip"
                   onClick={() => onSelectState(stateName)}
                   onMouseEnter={() => {
                       if (stateData) {

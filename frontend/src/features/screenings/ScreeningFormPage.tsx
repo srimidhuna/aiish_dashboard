@@ -142,20 +142,7 @@ export default function ScreeningFormPage() {
             <CardTitle>Clinical Context</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <FormSection title="Birth Information (Read-only)">
-              <div className="col-span-2">
-                <span className="text-sm font-medium text-muted-foreground">Birth Weight:</span>
-                <span className="ml-2 text-sm">{child.birthWeightGrams ?? '—'} g</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-sm font-medium text-muted-foreground">Gestational Age:</span>
-                <span className="ml-2 text-sm">{child.gestationalAgeWeeks ?? '—'} weeks</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-sm font-medium text-muted-foreground">Place of Birth:</span>
-                <span className="ml-2 text-sm">{child.placeOfBirth ?? '—'}</span>
-              </div>
-            </FormSection>
+
 
             <FormSection title="ENT Findings">
               <div className="col-span-6">

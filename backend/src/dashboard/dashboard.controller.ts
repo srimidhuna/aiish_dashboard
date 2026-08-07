@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards, Query, BadRequestException } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -7,6 +7,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { JwtPayload } from '@/auth/strategies/jwt.strategy';
 import { DashboardService } from '@/dashboard/dashboard.service';
 
 @ApiTags('dashboard')
@@ -73,5 +75,31 @@ export class DashboardController {
   @ApiOkResponse({ description: 'Array of years' })
   getAvailableYears() {
     return this.dashboardService.getAvailableYears();
+  }
+
+  /**
+   * Staff (audiologist) dashboard overview.
+   * - Admin: can pass any ?hospitalId= query param.
+   * - Audiologist: hospitalId is always taken from their JWT (cannot be overridden).
+   */
+  @Get('staff-overview')
+  @ApiOperation({ summary: 'Hospital-scoped KPIs for staff (audiologist) dashboard' })
+  @ApiOkResponse({ description: 'Staff dashboard stats' })
+  @ApiUnauthorizedResponse({ description: 'Not authenticated' })
+  getStaffOverview(
+    @CurrentUser() user: JwtPayload,
+    @Query('hospitalId') queryHospitalId?: string,
+  ) {
+    // Audiologists are pinned to their own hospital; admins may specify any hospitalId
+    const hospitalId =
+      user.role === 'audiologist'
+        ? user.hospitalId
+        : queryHospitalId ?? user.hospitalId;
+
+    if (!hospitalId) {
+      throw new BadRequestException('hospitalId is required for staff overview.');
+    }
+
+    return this.dashboardService.getStaffOverview(hospitalId);
   }
 }

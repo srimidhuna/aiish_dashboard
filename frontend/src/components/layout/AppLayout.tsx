@@ -6,7 +6,6 @@ import {
   BarChart3,
   Calendar,
   LayoutDashboard,
-  Settings,
   Hospital,
   Moon,
   Bell,
@@ -15,11 +14,24 @@ import {
   Users,
   Maximize2,
   Repeat,
+  LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
 
+// All nav items with optional role restriction
+const ALL_NAV_ITEMS = [
+  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: null },
+  { label: 'Register Child', path: '/children/register', icon: UserPlus, roles: null },
+  { label: 'Children', path: '/children', icon: Baby, roles: null },
+  { label: 'Re-Screening', path: '/rescreening', icon: Repeat, roles: null },
+  { label: 'Follow-ups', path: '/follow-ups', icon: Calendar, roles: ['admin'] },
+  { label: 'Staff', path: '/staff', icon: Users, roles: ['admin'] },
+  { label: 'Hospitals', path: '/hospitals', icon: Hospital, roles: ['admin'] },
+  { label: 'Analytics', path: '/analytics', icon: BarChart3, roles: ['admin'] },
+] as const;
+
 export function AppLayout() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -28,17 +40,17 @@ export function AppLayout() {
   if (isLoading) return <div>Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
 
-  const navItems = [
-    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { label: 'Register Child', path: '/children/register', icon: UserPlus },
-    { label: 'Children', path: '/children', icon: Baby },
-    { label: 'Re-Screening', path: '/rescreening', icon: Repeat },
-    { label: 'Follow-ups', path: '/follow-ups', icon: Calendar },
-    { label: 'Staff', path: '/staff', icon: Users },
-    { label: 'Hospitals', path: '/hospitals', icon: Hospital },
-    { label: 'Analytics', path: '/analytics', icon: BarChart3 },
-    { label: 'Settings', path: '/settings', icon: Settings },
-  ];
+  const userRole = user.role;
+
+  // Filter nav items based on the user's role
+  const navItems = ALL_NAV_ITEMS.filter(
+    (item) => item.roles === null || item.roles.includes(userRole as 'admin'),
+  );
+
+  const roleLabel =
+    userRole === 'admin' ? 'Admin' :
+    userRole === 'audiologist' ? 'Audiologist' :
+    userRole === 'doctor' ? 'Doctor' : userRole;
 
   return (
     <div className="flex h-screen bg-[#f4f6fb] dark:bg-background overflow-hidden print:h-auto print:bg-white print:overflow-visible">
@@ -87,7 +99,7 @@ export function AppLayout() {
                   }`}
                 style={isActive ? {
                   background: isDark 
-                    ? 'linear-gradient(135deg, #9d4edd 0%, #5a189a 100%)' // Softer, lower contrast purple
+                    ? 'linear-gradient(135deg, #9d4edd 0%, #5a189a 100%)'
                     : 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
                   boxShadow: isDark ? 'none' : '0 4px 15px rgba(139, 92, 246, 0.4)',
                 } : {}}
@@ -101,6 +113,7 @@ export function AppLayout() {
               </Link>
             );
           })}
+
         </nav>
 
         {/* Toggle Sidebar */}
@@ -174,9 +187,18 @@ export function AppLayout() {
               </div>
               <div className="flex flex-col leading-tight">
                 <span className="text-xs font-semibold text-white">{user.name ?? 'User'}</span>
-                <span className="text-[10px] text-white/40">{(user as any).role ?? 'admin'}</span>
+                <span className="text-[10px] text-white/40">{roleLabel}</span>
               </div>
             </div>
+
+            {/* Logout */}
+            <button
+              onClick={logout}
+              title="Logout"
+              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 text-white/60 hover:text-red-400 transition-colors ml-2"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </header>
 
