@@ -87,16 +87,24 @@ export function HospitalFormDialog({ isOpen, onClose, hospital }: HospitalFormDi
     mutationFn: (data: FormData) => {
       const { state: _state, ...payload } = data;
       void _state;
+      // Strip empty strings — empty string is not a valid UUID for FK fields
+      const cleanPayload = {
+        ...payload,
+        address: payload.address || undefined,
+        contactPerson: payload.contactPerson || undefined,
+        contactPhone: payload.contactPhone || undefined,
+        primaryAudiologistId: payload.primaryAudiologistId || undefined,
+      };
       return hospital
-        ? hospitalsService.update(hospital.id, payload)
-        : hospitalsService.create(payload);
+        ? hospitalsService.update(hospital.id, cleanPayload)
+        : hospitalsService.create(cleanPayload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hospitals'] });
       toast.success(hospital ? 'Hospital updated successfully!' : 'Hospital created successfully!');
       onClose();
     },
-    onError: () => toast.error('Failed to save hospital.'),
+    onError: (err: Error) => toast.error(err.message || 'Failed to save hospital.'),
   });
 
   if (!isOpen) return null;
