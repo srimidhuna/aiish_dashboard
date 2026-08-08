@@ -23,7 +23,7 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { email: 'admin@aiish.demo', password: 'password123', nbsCentre: '' },
+    defaultValues: { email: '', password: '', nbsCentre: '' },
   });
 
   if (user) return <Navigate to="/dashboard" replace />;
