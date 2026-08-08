@@ -153,6 +153,12 @@ export default function RegisterChildPage() {
     },
   });
 
+  useEffect(() => {
+    if (nbsCentre) {
+      setValue('nbsCentre', nbsCentre);
+    }
+  }, [nbsCentre, setValue]);
+
   const riskFactorIds = watch('riskFactorIds');
   const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
   const consanguinityDegree = watch('consanguinityDegree');
@@ -830,7 +836,12 @@ export default function RegisterChildPage() {
               </div>
               <div className="col-span-3">
                 <label className="text-sm font-medium">Out Reach Service / NBS Centre</label>
-                <Input {...register('nbsCentre')} readOnly className="bg-muted cursor-not-allowed" title="Auto-filled from login" />
+                <Input 
+                  {...register('nbsCentre')} 
+                  readOnly={!!nbsCentre} 
+                  className={nbsCentre ? "bg-muted cursor-not-allowed" : ""} 
+                  title={nbsCentre ? "Auto-filled from login" : "Enter NBS Centre"} 
+                />
               </div>
 
               <div className="col-span-2">
