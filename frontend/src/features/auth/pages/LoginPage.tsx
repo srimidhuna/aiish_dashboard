@@ -5,6 +5,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useState } from 'react';
 import { Button } from '../../../components/ui/Button';
+import { Eye, EyeOff } from 'lucide-react';
 
 const schema = z.object({
   email: z.string().email(),
@@ -16,6 +17,7 @@ export function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -66,12 +68,21 @@ export function LoginPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Password</label>
-            <input
-              type="password"
-              {...register('password')}
-              autoComplete="new-password"
-              className="w-full p-2 rounded-md border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                {...register('password')}
+                autoComplete="new-password"
+                className="w-full p-2 rounded-md border border-input bg-background focus:ring-2 focus:ring-primary outline-none pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {errors.password && (
               <p className="text-destructive text-xs mt-1">{errors.password.message as string}</p>
             )}
