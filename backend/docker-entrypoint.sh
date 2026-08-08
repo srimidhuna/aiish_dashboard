@@ -28,4 +28,4 @@ else
 fi
 
 echo "[entrypoint] Starting AIISH backend..."
-exec node dist/main
+exec node dist/src/main
