@@ -56,6 +56,7 @@ const schema = z.object({
 
   referredBy: z.enum(['pocd_staff', 'doctor', 'self', 'others']).optional(),
   referredByOther: z.string().optional(),
+  nbsCentre: z.string().optional(),
   region: z.enum(['urban', 'rural']).optional(),
   socioEconomicStatus: z.enum(['aay', 'bpl', 'apl']).optional(),
   educationLevel: z
@@ -145,6 +146,7 @@ export default function RegisterChildPage() {
     resolver: zodResolver(schema),
     defaultValues: {
       gender: 'male',
+      nbsCentre: nbsCentre || '',
       riskFactorIds: [],
       familyHistoryHearingLoss: false,
       caregiverConcern: false,
@@ -826,6 +828,11 @@ export default function RegisterChildPage() {
                   </select>
                 )}
               </div>
+              <div className="col-span-3">
+                <label className="text-sm font-medium">Out Reach Service / NBS Centre</label>
+                <Input {...register('nbsCentre')} readOnly className="bg-muted cursor-not-allowed" title="Auto-filled from login" />
+              </div>
+
               <div className="col-span-2">
                 <label className="text-sm font-medium">Region</label>
                 <select
@@ -1111,7 +1118,7 @@ export default function RegisterChildPage() {
                   {v.referredBy === 'others' && (
                     <Row label="Referred By (specify)" value={v.referredByOther} />
                   )}
-
+                  <Row label="NBS Centre" value={v.nbsCentre} />
                   <Row label="Region" value={v.region ? v.region.charAt(0).toUpperCase() + v.region.slice(1) : undefined} />
                   <Row label="Socio-Economic Status" value={v.socioEconomicStatus?.toUpperCase()} />
                   <Row label="Religion" value={v.religion ? v.religion.charAt(0).toUpperCase() + v.religion.slice(1) : undefined} />
