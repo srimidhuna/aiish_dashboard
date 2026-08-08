@@ -71,13 +71,6 @@ async function main(): Promise<void> {
   // ── Hospitals ────────────────────────────────────────────────────────────
   const hospitalDefs = [
     { name: 'Mysuru General Hospital', district: 'Mysuru', contactPerson: 'Dr. Rao', contactPhone: '9876543210', address: 'Sayyaji Rao Rd, Mysuru' },
-    { name: 'AIISH Main Clinic', district: 'Mysuru', contactPerson: 'Dr. Kumar', contactPhone: '9876543211', address: 'Manasagangothri, Mysuru' },
-    { name: 'Bengaluru Victoria Hospital', district: 'Bengaluru Urban', contactPerson: 'Dr. Nair', contactPhone: '9876543212', address: 'Fort Rd, Bengaluru' },
-    { name: 'Bengaluru Cradle Care Clinic', district: 'Bengaluru Urban', contactPerson: 'Dr. Iyer', contactPhone: '9876543213', address: 'Jayanagar, Bengaluru' },
-    { name: 'Mandya District Hospital', district: 'Mandya', contactPerson: 'Dr. Gowda', contactPhone: '9876543214', address: 'Mandya Town' },
-    { name: 'Hassan Institute of Medical Sciences', district: 'Hassan', contactPerson: 'Dr. Shetty', contactPhone: '9876543215', address: 'Hassan Town' },
-    { name: 'Kozhikode Medical College', district: 'Kozhikode', contactPerson: 'Dr. Menon', contactPhone: '9876543216', address: 'Medical College Rd, Kozhikode' },
-    { name: 'Ernakulam General Hospital', district: 'Ernakulam', contactPerson: 'Dr. Thomas', contactPhone: '9876543218', address: 'MG Rd, Ernakulam' },
   ];
 
   const hospitals: { id: string; name: string }[] = [];
@@ -136,36 +129,11 @@ async function main(): Promise<void> {
     },
   });
 
-  const audiologistNamePool = ['Jones', 'Fernandes', 'Pillai', 'Bose', 'Kutty', 'Varma', 'Anand', 'Rehman', 'Das', 'Nazir'];
-  const audiologists: { id: string; hospitalId: string }[] = [demoAudiologist];
-  let nameIdx = 0;
-  for (const hospital of hospitals) {
-    for (let j = 0; j < 2; j++) {
-      const email = `audiologist${hospital.id.slice(-4)}${j}@aiish.demo`;
-      const fullName = `Dr. ${audiologistNamePool[nameIdx % audiologistNamePool.length]}`;
-      nameIdx++;
-      const a = await prisma.user.upsert({
-        where: { email },
-        update: { fullName, hospitalId: hospital.id, role: UserRole.audiologist },
-        create: {
-          email,
-          passwordHash: audiologistPasswordHash,
-          fullName,
-          hospitalId: hospital.id,
-          role: UserRole.audiologist,
-        },
-      });
-      audiologists.push(a);
-    }
-  }
-  console.log(`[seed] Users: 1 admin + ${audiologists.length} audiologists upserted`);
 
-  // Assign each hospital's primary audiologist to its first attached audiologist
+
+  // Assign each hospital's primary audiologist
   for (const hospital of hospitals) {
-    const primary = audiologists.find((a) => a.hospitalId === hospital.id);
-    if (primary) {
-      await prisma.hospital.update({ where: { id: hospital.id }, data: { primaryAudiologistId: primary.id } });
-    }
+    await prisma.hospital.update({ where: { id: hospital.id }, data: { primaryAudiologistId: demoAudiologist.id } });
   }
 
   // ── Risk Categories (matches the paper's "High Risk Register — Medical professionals" list) ──
@@ -256,185 +224,7 @@ async function main(): Promise<void> {
   }
   console.log(`[seed] Recommendation types: ${recommendationRows.length} upserted`);
 
-  // ── Demo Babies + Risk Factors + Assessment + Screenings + Follow-ups ───
-  const districts = Array.from(districtByName.values());
-  const totalBabies = 24;
 
-  for (let i = 0; i < totalBabies; i++) {
-    const hospital = hospitals[i % hospitals.length];
-    const babyId = seedId('baby', i + 1);
-    const isMale = i % 2 === 0;
-    const dob = new Date(Date.now() - Math.random() * 1000 * 60 * 60 * 24 * 120);
-
-    const baby = await prisma.baby.upsert({
-      where: { id: babyId },
-      update: {},
-      create: {
-        id: babyId,
-        mrNumber: `MR-${2000 + i}`,
-        pocdNumber: `POCD-${3000 + i}`,
-        uniqueMotherId: `UMI-${4000 + i}`,
-        firstName: isMale ? 'Aarav' : 'Diya',
-        lastName: `Baby${i + 1}`,
-        dob,
-        gender: isMale ? 'male' : 'female',
-        birthWeightGrams: 2500 + Math.floor(Math.random() * 1000),
-        gestationalAgeWeeks: 36 + Math.floor(Math.random() * 5),
-        placeOfBirth: 'Hospital',
-        motherName: 'Mother Name',
-        fatherName: 'Father Name',
-        address: '123 Main St',
-        taluk: 'Taluk',
-        pinCode: '570001',
-        districtId: districts[i % districts.length].id,
-        hospitalId: hospital.id,
-        department: 'Pediatrics',
-        doctorName: 'Dr. Smith',
-        phone1: `999888${String(7000 + i)}`,
-        phone2: null,
-        referredBy: [ReferredBy.pocd_staff, ReferredBy.doctor, ReferredBy.self][i % 3],
-        nbsCentre: 'Out Reach Service / NBS Centre',
-        region: i % 3 === 0 ? Region.rural : Region.urban,
-        educationLevel: EducationLevelParent.high_school,
-        religion: Religion.hindu,
-        socioEconomicStatus: SocioEconomicStatus.bpl,
-        deliveryType: DeliveryType.normal,
-        noOfSiblings: i % 4,
-        status: i % 6 === 0 ? BabyStatus.follow_up_required : BabyStatus.completed,
-        createdById: admin.id,
-      },
-    });
-
-    // Risk factors — every 4th baby has one
-    if (i % 4 === 0) {
-      const rc = riskCategoryRows[i % riskCategoryRows.length];
-      await prisma.babyRiskFactor.upsert({
-        where: { babyId_riskCategoryId: { babyId: baby.id, riskCategoryId: rc.id } },
-        update: {},
-        create: { babyId: baby.id, riskCategoryId: rc.id },
-      });
-    }
-
-    // Audiologist assessment
-    await prisma.audiologistAssessment.upsert({
-      where: { babyId: baby.id },
-      update: {},
-      create: {
-        babyId: baby.id,
-        familyHistoryHearingLoss: i % 7 === 0,
-        consanguinityDegree: i % 5 === 0 ? ConsanguinityDegree.first : null,
-        caregiverConcern: i % 6 === 0,
-        reflexMoro: ReflexResult.normal,
-        reflexRooting: ReflexResult.normal,
-        reflexBabinski: ReflexResult.normal,
-        reflexPalmar: ReflexResult.normal,
-        reflexPlantar: ReflexResult.normal,
-      },
-    });
-
-    const audiologist = audiologists.find((a) => a.hospitalId === hospital.id) ?? demoAudiologist;
-
-    // Screenings: mix of completed/scheduled/draft
-    const screeningId = seedId('screening', i + 1);
-    const isRefer = i % 5 === 0;
-    if (i < 16) {
-      // Completed
-      await prisma.screening.upsert({
-        where: { id: screeningId },
-        update: {},
-        create: {
-          id: screeningId,
-          babyId: baby.id,
-          status: ScreeningStatus.completed,
-          entFindings: 'Normal',
-          boaResult: isRefer ? ScreeningTestResult.refer : ScreeningTestResult.pass,
-          teoaeRight: ScreeningTestResult.pass,
-          teoaeLeft: isRefer ? ScreeningTestResult.refer : ScreeningTestResult.pass,
-          dpoaeRight: ScreeningTestResult.pass,
-          dpoaeLeft: ScreeningTestResult.pass,
-          aabr1Right: ScreeningTestResult.pass,
-          aabr1Left: ScreeningTestResult.pass,
-          overallResult: isRefer ? PassReferResult.refer : PassReferResult.pass,
-          remarks: 'Routine screening performed.',
-          testedById: audiologist.id,
-          assignedAudiologistId: audiologist.id,
-          testedAt: new Date(),
-        },
-      });
-    } else if (i < 20) {
-      // Scheduled (due today or in the next few days)
-      const dueOffsetDays = (i - 16) % 2 === 0 ? 0 : (i - 16);
-      await prisma.screening.upsert({
-        where: { id: screeningId },
-        update: {},
-        create: {
-          id: screeningId,
-          babyId: baby.id,
-          status: ScreeningStatus.scheduled,
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * dueOffsetDays),
-          testedById: audiologist.id,
-          assignedAudiologistId: audiologist.id,
-          testedAt: new Date(),
-        },
-      });
-    } else {
-      // Draft
-      await prisma.screening.upsert({
-        where: { id: screeningId },
-        update: {},
-        create: {
-          id: screeningId,
-          babyId: baby.id,
-          status: ScreeningStatus.draft,
-          dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2),
-          remarks: 'Started but not yet completed.',
-          testedById: audiologist.id,
-          assignedAudiologistId: audiologist.id,
-          testedAt: new Date(),
-        },
-      });
-    }
-
-    // Follow-ups for referred completed screenings
-    if (i < 16 && isRefer) {
-      const followUpId = seedId('followup', i + 1);
-      const followUp = await prisma.followUp.upsert({
-        where: { id: followUpId },
-        update: {},
-        create: {
-          id: followUpId,
-          babyId: baby.id,
-          followUpType: FollowUpType.regular,
-          provisionalDiagnosisRight: 'Refer',
-          provisionalDiagnosisLeft: 'Normal',
-          status: FollowUpStatus.scheduled,
-          scheduledDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-          providerId: audiologist.id,
-        },
-      });
-      const rec = recommendationRows[i % recommendationRows.length];
-      await prisma.babyRecommendation.upsert({
-        where: { followUpId_recommendationTypeId: { followUpId: followUp.id, recommendationTypeId: rec.id } },
-        update: {},
-        create: { followUpId: followUp.id, recommendationTypeId: rec.id },
-      });
-    }
-
-    // Registration timeline event
-    await prisma.patientTimeline.upsert({
-      where: { id: seedId('timeline-reg', i + 1) },
-      update: {},
-      create: {
-        id: seedId('timeline-reg', i + 1),
-        babyId: baby.id,
-        event: 'registered',
-        description: 'Registered in the system',
-        createdById: admin.id,
-        createdAt: baby.createdAt,
-      },
-    });
-  }
-  console.log(`[seed] Babies: ${totalBabies} upserted with risk factors, assessments, screenings, follow-ups, timeline`);
 
   console.log('[seed] Seed completed successfully.');
 }
