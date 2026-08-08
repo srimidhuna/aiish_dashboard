@@ -176,27 +176,7 @@ export function HospitalFormDialog({ isOpen, onClose, hospital }: HospitalFormDi
             </div>
           </div>
 
-          {hospital && (
-            <div>
-              <label className="text-sm font-medium">Primary Audiologist</label>
-              <select
-                {...register('primaryAudiologistId')}
-                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm mt-1"
-              >
-                <option value="">-- Unassigned --</option>
-                {audiologists?.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {!hospital && (
-            <p className="text-xs text-muted-foreground">
-              Primary audiologist can be assigned after the hospital is created.
-            </p>
-          )}
+
 
           <div>
             <label className="text-sm font-medium">Status</label>
