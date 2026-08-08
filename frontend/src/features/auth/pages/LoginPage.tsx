@@ -9,7 +9,6 @@ import { Button } from '../../../components/ui/Button';
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
-  nbsCentre: z.string().min(1, 'Out Reach Service / NBS Centre is required'),
 });
 
 export function LoginPage() {
@@ -23,7 +22,7 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { email: 'admin@aiish.demo', password: 'password123', nbsCentre: '' },
+    defaultValues: { email: 'admin@aiish.in', password: 'password123' },
   });
 
   if (user) return <Navigate to="/dashboard" replace />;
@@ -31,7 +30,7 @@ export function LoginPage() {
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
       setError('');
-      await login(data.email, data.password, data.nbsCentre);
+      await login(data.email, data.password);
       navigate('/dashboard');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -74,16 +73,7 @@ export function LoginPage() {
               <p className="text-destructive text-xs mt-1">{errors.password.message as string}</p>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Out Reach Service / NBS Centre</label>
-            <input
-              {...register('nbsCentre')}
-              className="w-full p-2 rounded-md border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
-            />
-            {errors.nbsCentre && (
-              <p className="text-destructive text-xs mt-1">{errors.nbsCentre.message as string}</p>
-            )}
-          </div>
+
           <Button type="submit" disabled={isSubmitting} className="w-full">
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </Button>

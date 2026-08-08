@@ -92,7 +92,7 @@ export function ChildOverviewCards({ child, hospital }: ChildOverviewCardsProps)
             </div>
             <div className="flex justify-between items-start">
               <span className="text-muted-foreground">NBS Centre:</span>
-              <span className="font-medium text-right">{child.nbsCentre || '—'}</span>
+              <span className="font-medium text-right">{child.hospital?.name || child.nbsCentre || '—'}</span>
             </div>
             <div className="flex justify-between items-start">
               <span className="text-muted-foreground">Region / SES:</span>
