@@ -62,6 +62,9 @@ export default function HospitalsPage() {
       queryClient.invalidateQueries({ queryKey: ['hospitals'] });
       toast.success('Hospital deleted.');
     },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Cannot delete hospital. It may have children or users linked to it.');
+    },
   });
 
   const openCreate = () => {

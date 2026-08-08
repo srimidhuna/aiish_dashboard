@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateHospitalDto } from '@/masters/dto/create-hospital.dto';
@@ -100,7 +100,23 @@ export class MastersService {
 
   async deleteHospital(id: string) {
     await this.getHospitalById(id);
-    await this.prisma.hospital.delete({ where: { id } });
+    try {
+      await this.prisma.hospital.delete({ where: { id } });
+    } catch (err: unknown) {
+      // Prisma P2003 = foreign key constraint — hospital has babies/users linked
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2003'
+      ) {
+        throw new BadRequestException(
+          'Cannot delete this hospital because it has children or users linked to it. ' +
+          'Please reassign or remove them first.',
+        );
+      }
+      throw err;
+    }
     return { message: 'Hospital deleted successfully.' };
   }
 

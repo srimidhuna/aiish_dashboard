@@ -63,6 +63,25 @@ export default function ChildDetailsPage() {
     },
   });
 
+  const deleteChild = useMutation({
+    mutationFn: () => childrenService.delete(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['children'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
+      toast.success('Child record deleted successfully.');
+      navigate('/children');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to delete child record.');
+    },
+  });
+
+  const handleDeleteChild = () => {
+    if (window.confirm(`Permanently delete ${child?.firstName} ${child?.lastName}'s record? This action cannot be undone.`)) {
+      deleteChild.mutate();
+    }
+  };
+
   const { data: hospital } = useQuery({
     queryKey: ['hospital', child?.hospitalOfBirthId],
     queryFn: () => hospitalsService.getById(child!.hospitalOfBirthId),
@@ -114,8 +133,12 @@ export default function ChildDetailsPage() {
           <Button variant="secondary" onClick={() => navigate(`/children/${id}/edit`)}>
             Edit Child
           </Button>
-          <Button variant="destructive" onClick={() => toast.info('Delete not implemented yet.')}>
-            Delete Child
+          <Button
+            variant="destructive"
+            onClick={handleDeleteChild}
+            disabled={deleteChild.isPending}
+          >
+            {deleteChild.isPending ? 'Deleting…' : 'Delete Child'}
           </Button>
           <Button onClick={() => navigate(`/screenings/new?childId=${id}`)}>New Screening</Button>
         </div>
