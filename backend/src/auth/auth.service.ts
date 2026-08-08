@@ -66,15 +66,18 @@ export class AuthService {
 
     // Set the JWT as an HttpOnly, SameSite cookie so JS cannot read it.
     // SameSite:
-    //   - 'lax'    in development (allows cross-origin dev setups with localhost)
-    //   - 'strict' in production  (tightest protection for health data)
+    //   - 'lax'  in development (allows cross-origin dev setups with localhost)
+    //   - 'none' in production  (required for cross-origin: frontend on Vercel,
+    //                            backend on Render — different domains)
+    //             NOTE: SameSite=None requires Secure=true (HTTPS), which is
+    //             already enforced in production.
     // Secure:
     //   - false in development (no HTTPS locally)
     //   - true  in production  (requires HTTPS)
     response.cookie(ACCESS_TOKEN_COOKIE, token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
+      sameSite: isProduction ? 'none' : 'lax',
       path: '/',
       // maxAge mirrors the JWT expiry (default 8h = 28800000ms)
       maxAge: this.parseExpiryToMs(this.configService.get<string>('JWT_EXPIRES_IN') ?? '8h'),
