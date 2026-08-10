@@ -34,7 +34,7 @@ export default function StartReScreeningPage() {
       aabr2Right: '',
       aabr2Left: '',
       scheduleFollowUp: true,
-      followUpDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      followUpDate: '',
       followUpNotes: 'Re-Screening failed. Diagnostic Evaluation Required.',
     }
   });
@@ -339,6 +339,14 @@ export default function StartReScreeningPage() {
 
             {scheduleFollowUp && (
               <div className="grid gap-4 md:grid-cols-2 pt-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-red-900">Follow-up Date</label>
+                  <input
+                    type="date"
+                    {...register('followUpDate')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-red-900">Notes (Optional)</label>
                   <input

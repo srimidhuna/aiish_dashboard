@@ -58,7 +58,7 @@ export function FollowUpDialog({
     defaultValues: {
       childId: defaultChildId || '',
       followUpType: 'regular',
-      scheduledDate: new Date(Date.now() + 86400000 * 7).toISOString().substring(0, 10),
+      scheduledDate: '',
       notes: '',
     },
   });
@@ -76,7 +76,7 @@ export function FollowUpDialog({
         reset({
           childId: defaultChildId || '',
           followUpType: 'regular',
-          scheduledDate: new Date(Date.now() + 86400000 * 7).toISOString().substring(0, 10),
+          scheduledDate: '',
           notes: '',
         });
         setRecommendationTypeIds([]);
