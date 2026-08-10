@@ -143,9 +143,9 @@ model Baby {
   department               String?                @map("department")
   doctorName               String?                @map("doctor_name")
   email                    String?
-  firstName                String                 @map("first_name")
+  firstName                String?                @map("first_name")
   gestationalAgeWeeks      Int?                   @map("gestational_age_weeks")
-  lastName                 String                 @map("last_name")
+  lastName                 String?                @map("last_name")
   pinCode                  String?                @map("pin_code")
   placeOfBirth             String?                @map("place_of_birth")
   referredByOther          String?                @map("referred_by_other")

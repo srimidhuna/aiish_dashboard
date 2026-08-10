@@ -32,8 +32,8 @@ const schema = z.object({
   pocdNumber: z.string().optional(),
   uniqueMotherId: z.string().optional(),
 
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   dateOfBirth: z.string().min(1, 'Required'),
   gender: z.enum(['male', 'female', 'other']),
 
@@ -586,7 +586,7 @@ export default function RegisterChildPage() {
               </div>
 
               <div className="col-span-3">
-                <label className="text-sm font-medium">First Name *</label>
+                <label className="text-sm font-medium">First Name</label>
                 <Input
                   {...register('firstName')}
                   className={cn(errors.firstName && 'border-destructive')}
@@ -596,7 +596,7 @@ export default function RegisterChildPage() {
                 )}
               </div>
               <div className="col-span-3">
-                <label className="text-sm font-medium">Last Name *</label>
+                <label className="text-sm font-medium">Last Name</label>
                 <Input
                   {...register('lastName')}
                   className={cn(errors.lastName && 'border-destructive')}

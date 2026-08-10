@@ -104,7 +104,6 @@ export interface Child {
   placeOfBirth?: string;
 
   hospitalOfBirthId: string; // maps to backend hospitalId
-  hospital?: Hospital;
   districtId?: string;
   district?: string; // denormalized district name (read-only)
   state?: string; // denormalized state name (read-only)

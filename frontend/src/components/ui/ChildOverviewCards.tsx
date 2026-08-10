@@ -65,14 +65,6 @@ export function ChildOverviewCards({ child, hospital }: ChildOverviewCardsProps)
           <h3 className="text-lg font-semibold mb-4 text-foreground/90">Hospital & Care Team</h3>
           <div className="space-y-3 text-sm">
             <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">Hospital:</span>
-              <span className="font-medium text-right">{hospital?.name || child.district || '—'}</span>
-            </div>
-            <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">State / District:</span>
-              <span className="font-medium text-right">{[child.state, child.district].filter(Boolean).join(' / ') || '—'}</span>
-            </div>
-            <div className="flex justify-between items-start">
               <span className="text-muted-foreground">Assessing Staff:</span>
               <span className="font-medium text-right">
                 {child.assessingStaffName ? `${child.assessingStaffName} (${child.assessingStaffEmployeeId || '—'})` : '—'}
@@ -92,7 +84,7 @@ export function ChildOverviewCards({ child, hospital }: ChildOverviewCardsProps)
             </div>
             <div className="flex justify-between items-start">
               <span className="text-muted-foreground">NBS Centre:</span>
-              <span className="font-medium text-right">{child.hospital?.name || child.nbsCentre || '—'}</span>
+              <span className="font-medium text-right">{child.nbsCentre || '—'}</span>
             </div>
             <div className="flex justify-between items-start">
               <span className="text-muted-foreground">Region / SES:</span>

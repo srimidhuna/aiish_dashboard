@@ -30,8 +30,8 @@ export class CreateBabyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() uniqueMotherId?: string;
 
   // ── Child info ──
-  @ApiProperty() @IsString() @IsNotEmpty() firstName!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() lastName!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() firstName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() lastName?: string;
   @ApiProperty() @IsDateString() dob!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() timeOfBirth?: string;
   @ApiProperty({ enum: GENDER }) @IsIn(GENDER) gender!: string;
