@@ -142,12 +142,20 @@ export class DashboardService {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    // Use the selected date range for screenings/rescreening KPI cards if a date
-    // filter is active, otherwise fall back to actual today's range.
-    const selectedDayRange = dateFilter ?? { gte: startOfToday, lte: endOfToday };
+    const includestoday = this.filterIncludesToday(year, month, day);
+
+    // Use the specific day range if a day is selected.
+    // Otherwise, use today's range (if today is within the selected year/month).
+    let selectedDayRange;
+    if (day) {
+      selectedDayRange = dateFilter!;
+    } else {
+      selectedDayRange = includestoday
+        ? { gte: startOfToday, lte: endOfToday }
+        : { gte: new Date('1970-01-01'), lte: new Date('1970-01-01') };
+    }
 
     // todaysFollowUps panel still always shows the real today.
-    const includestoday = this.filterIncludesToday(year, month, day);
     const todaysFollowUpRange = includestoday
       ? { gte: startOfToday, lte: endOfToday }
       : { gte: new Date('1970-01-01'), lte: new Date('1970-01-01') };
