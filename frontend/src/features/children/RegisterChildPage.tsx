@@ -240,6 +240,9 @@ export default function RegisterChildPage() {
           onClick: () => {
             reset(saved.values);
             setCurrentStep(saved.step);
+            if (nbsCentre) {
+              setValue('nbsCentre', nbsCentre);
+            }
             if (saved.values.hospitalOfBirthId) {
               setLocation({
                 hospitalId: saved.values.hospitalOfBirthId,

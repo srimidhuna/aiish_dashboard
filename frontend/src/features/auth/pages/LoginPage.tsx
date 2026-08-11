@@ -91,6 +91,7 @@ export function LoginPage() {
             <label className="block text-sm font-medium mb-1">Out Reach Service / NBS Centre *</label>
             <input
               {...register('nbsCentre')}
+              autoComplete="off"
               className="w-full p-2 rounded-md border border-input bg-background focus:ring-2 focus:ring-primary outline-none"
             />
             {errors.nbsCentre && (
