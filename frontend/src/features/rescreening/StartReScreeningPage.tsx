@@ -140,6 +140,7 @@ export default function StartReScreeningPage() {
   });
 
   const onSubmit = (data: ReScreeningFormData) => {
+    if (mutation.isPending) return; // prevent duplicate submissions
     if (!data.aabr2Right || !data.aabr2Left) {
       toast.error('Please enter results for both ears.');
       return;
@@ -429,8 +430,8 @@ export default function StartReScreeningPage() {
           </div>
 
         <div className="flex justify-end pt-4">
-          <Button type="submit" disabled={isSubmitting || !isComplete} className="px-8">
-            {isSubmitting ? 'Saving...' : 'Submit Re-Screening Results'}
+          <Button type="submit" disabled={mutation.isPending || !isComplete} className="px-8">
+            {mutation.isPending ? 'Saving...' : 'Submit Re-Screening Results'}
           </Button>
         </div>
       </form>
