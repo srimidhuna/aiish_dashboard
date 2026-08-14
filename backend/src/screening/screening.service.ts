@@ -83,6 +83,11 @@ export class ScreeningService {
       dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
     };
 
+    // Stamp the actual completion time when transitioning to 'completed'
+    if (existing.status !== 'completed' && dto.status === 'completed') {
+      data.testedAt = new Date();
+    }
+
     const screening = await this.prisma.screening.update({
       where: { id },
       data: data as Prisma.ScreeningUncheckedUpdateInput,
