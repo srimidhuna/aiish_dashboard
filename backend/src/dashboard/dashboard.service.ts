@@ -179,7 +179,7 @@ export class DashboardService {
         where: { deletedAt: null, createdAt: selectedDayRange },
       }),
       this.prisma.screening.count({
-        where: { status: 'completed', testedAt: selectedDayRange },
+        where: { status: 'completed', type: 'initial', testedAt: selectedDayRange },
       }),
       this.prisma.screening.count({
         where: { status: 'completed', testedAt: selectedDayRange, overallResult: 'pass' },
@@ -741,10 +741,11 @@ export class DashboardService {
       todaysFollowUps,
       recentChildren,
     ] = await Promise.all([
-      // 1. Today's Screenings
+      // 1. Today's Screenings (Initial only)
       this.prisma.screening.count({
         where: {
           status: 'completed',
+          type: 'initial',
           testedAt: { gte: startOfToday, lte: endOfToday },
           baby: { hospitalId },
         },
