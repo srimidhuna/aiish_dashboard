@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { followUpsService, childrenService } from '../../services/api';
 import type { FollowUp } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -49,15 +49,7 @@ export default function FollowUpsPage() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => followUpsService.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['followUps'] });
-      queryClient.invalidateQueries({ queryKey: ['timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
-      toast.success('Follow-up deleted.');
-    },
-  });
+
 
   if (isLoading) {
     return (
@@ -357,16 +349,7 @@ export default function FollowUpsPage() {
                         >
                           Reschedule Visit
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:bg-destructive/10"
-                          onClick={() =>
-                            window.confirm('Delete this follow-up?') && deleteMutation.mutate(f.id)
-                          }
-                        >
-                          Delete
-                        </Button>
+
                       </td>
                     </tr>
                   );
