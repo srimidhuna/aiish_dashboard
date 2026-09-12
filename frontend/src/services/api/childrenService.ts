@@ -39,4 +39,11 @@ export const childrenService = {
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/babies/${id}`);
   },
+  checkUniqueMotherId: async (
+    id: string,
+    excludeId?: string,
+  ): Promise<{ exists: boolean; matches: Array<{ id: string; firstName?: string; lastName?: string; dob: string; gender: string; birthOrder?: string; hospital: { name: string } }> }> => {
+    const { data } = await apiClient.get('/babies/check-mother-id', { params: { id, excludeId } });
+    return data;
+  },
 };

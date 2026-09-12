@@ -31,16 +31,31 @@ const schema = z.object({
   hospitalNumber: z.string().min(1, 'Hospital number is required'),
   pocdNumber: z.string().optional(),
   uniqueMotherId: z.string().optional(),
+  birthOrder: z.string().optional(),
 
   firstName: z.string().optional(),
-  lastName: z.string().optional(),
+  lastName: z.string().min(1, 'Last name is required'),
   dateOfBirth: z.string().min(1, 'Required'),
   gender: z.enum(['male', 'female', 'other']),
 
   motherName: z.string().min(1, 'Required'),
+  motherAadhaar: z
+    .string()
+    .optional()
+    .refine((val) => !val || /^\d{12}$/.test(val), {
+      message: 'Aadhaar number must be exactly 12 digits',
+    }),
   fatherName: z.string().optional(),
-  contactNumber: z.string().min(10, 'Invalid number'),
-  whatsappNumber: z.string().optional(),
+  contactNumber: z
+    .string()
+    .min(1, 'Mobile number is required')
+    .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number'),
+  whatsappNumber: z
+    .string()
+    .optional()
+    .refine((val) => !val || /^[6-9]\d{9}$/.test(val), {
+      message: 'Enter a valid 10-digit WhatsApp number',
+    }),
   phone2: z.string().optional(),
   address: z.string().optional(),
   taluk: z.string().optional(),
@@ -54,8 +69,7 @@ const schema = z.object({
   audiologistId: z.string().optional(),
   assessingStaffId: z.string().optional(),
 
-  referredBy: z.enum(['pocd_staff', 'doctor', 'self', 'others']).optional(),
-  referredByOther: z.string().optional(),
+
   nbsCentre: z.string().optional(),
   region: z.enum(['urban', 'rural']).optional(),
   socioEconomicStatus: z.enum(['aay', 'bpl', 'apl']).optional(),
@@ -130,8 +144,55 @@ export default function RegisterChildPage() {
   const [location, setLocation] = useState<LocationFilterValue>({});
   const [guardianPhotoPreview, setGuardianPhotoPreview] = useState<string | null>(null);
   const guardianPhotoRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [firstNamePrefix, setFirstNamePrefix] = useState<'bo' | ''>('');
+  const [showAadhaar, setShowAadhaar] = useState(false);
+
+  // Unique Mother ID duplicate check
+  const [motherIdCheck, setMotherIdCheck] = useState<{
+    status: 'idle' | 'checking' | 'duplicate' | 'ok';
+    matches: Array<{ id: string; firstName?: string; lastName?: string; dob: string; gender: string; birthOrder?: string; hospital: { name: string } }>;
+  }>({ status: 'idle', matches: [] });
+  const motherIdDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
+
+  const openCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      setCameraStream(stream);
+      setIsCameraOpen(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      }, 100);
+    } catch {
+      // Fallback: trigger file input with capture attribute
+      guardianPhotoRef.current?.click();
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    setGuardianPhotoPreview(dataUrl);
+    setValue('guardianPhotoUrl', dataUrl);
+    closeCamera();
+  };
+
+  const closeCamera = () => {
+    cameraStream?.getTracks().forEach((t) => t.stop());
+    setCameraStream(null);
+    setIsCameraOpen(false);
+  };
 
   const {
     register,
@@ -162,12 +223,23 @@ export default function RegisterChildPage() {
   const riskFactorIds = watch('riskFactorIds');
   const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
   const consanguinityDegree = watch('consanguinityDegree');
-  const referredByValue = watch('referredBy');
+
   const religionValue = watch('religion');
   const educationLevelValue = watch('educationLevel');
   const dateOfBirthValue = watch('dateOfBirth');
   const parentState = watch('parentState');
   const parentDistrict = watch('parentDistrict');
+  const contactNumberValue = watch('contactNumber');
+
+  // WhatsApp option: 'same' | 'not_available' | 'custom'
+  const [whatsappOption, setWhatsappOption] = useState<'same' | 'not_available' | 'custom'>('custom');
+
+  // Keep WhatsApp in sync when mobile number changes and option is 'same'
+  useEffect(() => {
+    if (whatsappOption === 'same') {
+      setValue('whatsappNumber', contactNumberValue || '', { shouldValidate: true });
+    }
+  }, [contactNumberValue, whatsappOption, setValue]);
 
   // Store the previous state to only clear when state actually changes
   const [prevVal, setPrevVal] = useState({ state: parentState });
@@ -585,21 +657,112 @@ export default function RegisterChildPage() {
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">Unique Mother ID</label>
-                <Input {...register('uniqueMotherId')} />
+                <div className="relative">
+                  <Input
+                    {...register('uniqueMotherId')}
+                    onChange={(e) => {
+                      register('uniqueMotherId').onChange(e);
+                      const val = e.target.value.trim();
+                      if (!val) { setMotherIdCheck({ status: 'idle', matches: [] }); return; }
+                      setMotherIdCheck((p) => ({ ...p, status: 'checking' }));
+                      if (motherIdDebounceRef.current) clearTimeout(motherIdDebounceRef.current);
+                      motherIdDebounceRef.current = setTimeout(async () => {
+                        try {
+                          const res = await childrenService.checkUniqueMotherId(val, editId);
+                          setMotherIdCheck({ status: res.exists ? 'duplicate' : 'ok', matches: res.matches });
+                        } catch {
+                          setMotherIdCheck({ status: 'idle', matches: [] });
+                        }
+                      }, 600);
+                    }}
+                    className={cn(
+                      motherIdCheck.status === 'duplicate' && 'border-amber-500 focus-visible:ring-amber-400',
+                      motherIdCheck.status === 'ok' && 'border-green-500 focus-visible:ring-green-400',
+                    )}
+                  />
+                  {/* Status indicator */}
+                  {motherIdCheck.status === 'checking' && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground animate-pulse">Checking…</span>
+                  )}
+                  {motherIdCheck.status === 'ok' && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-600 text-xs font-medium">✓ Unique</span>
+                  )}
+                  {motherIdCheck.status === 'duplicate' && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-600 text-xs font-medium">⚠ Duplicate</span>
+                  )}
+                </div>
+
+                {/* Duplicate warning + birth-order selector */}
+                {motherIdCheck.status === 'duplicate' && (
+                  <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                      ⚠ This Unique Mother ID is already linked to {motherIdCheck.matches.length} existing record{motherIdCheck.matches.length > 1 ? 's' : ''}:
+                    </p>
+                    <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5 pl-3">
+                      {motherIdCheck.matches.map((m) => (
+                        <li key={m.id} className="list-disc">
+                          {m.firstName || m.lastName ? `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim() : 'Unnamed'}
+                          {' · '}{new Date(m.dob).toLocaleDateString('en-IN')}
+                          {' · '}{m.hospital.name}
+                          {m.birthOrder ? ` · ${m.birthOrder.replace(/_/g, ' ')}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="pt-1">
+                      <label className="text-xs font-medium text-amber-800 dark:text-amber-300 block mb-1">
+                        Is this baby a twin / sibling? Select relationship:
+                      </label>
+                      <select
+                        {...register('birthOrder')}
+                        className="w-full text-xs rounded-md border border-amber-300 bg-white dark:bg-zinc-900 px-2 py-1.5"
+                      >
+                        <option value="">-- Select birth order --</option>
+                        <option value="twin">Twin</option>
+                        <option value="triplet">Triplet</option>
+                        <option value="second_child">Second Child</option>
+                        <option value="third_child">Third Child</option>
+                        <option value="fourth_child">Fourth Child or more</option>
+                      </select>
+                      {!watch('birthOrder') && (
+                        <p className="text-xs text-amber-600 mt-1">Please select a relationship to proceed with this ID.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="col-span-3">
                 <label className="text-sm font-medium">First Name</label>
-                <Input
-                  {...register('firstName')}
-                  className={cn(errors.firstName && 'border-destructive')}
-                />
+                <div className="flex gap-2 mt-1">
+                  {/* B/o prefix toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setFirstNamePrefix(firstNamePrefix === 'bo' ? '' : 'bo')}
+                    className={cn(
+                      'shrink-0 px-3 py-1.5 rounded-md border text-sm font-semibold transition-colors',
+                      firstNamePrefix === 'bo'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                    )}
+                    title="Toggle B/o (Baby of) prefix for unnamed newborns"
+                  >
+                    B/o
+                  </button>
+                  <Input
+                    {...register('firstName')}
+                    placeholder={firstNamePrefix === 'bo' ? "Mother's name (auto-prefix B/o)" : 'First name'}
+                    className={cn('flex-1', errors.firstName && 'border-destructive')}
+                  />
+                </div>
+                {firstNamePrefix === 'bo' && (
+                  <p className="text-xs text-violet-600 mt-0.5">Will be saved as: <span className="font-semibold">B/o {watch('firstName') || '…'}</span></p>
+                )}
                 {errors.firstName && (
                   <span className="text-xs text-destructive">{errors.firstName.message}</span>
                 )}
               </div>
               <div className="col-span-3">
-                <label className="text-sm font-medium">Last Name</label>
+                <label className="text-sm font-medium">Last Name *</label>
                 <Input
                   {...register('lastName')}
                   className={cn(errors.lastName && 'border-destructive')}
@@ -662,11 +825,31 @@ export default function RegisterChildPage() {
                 <Input {...register('fatherName')} />
               </div>
 
+              {/* Mother's Aadhaar */}
+              <div className="col-span-3">
+                <label className="text-sm font-medium">Mother&apos;s Aadhaar Number</label>
+                <Input
+                  {...register('motherAadhaar')}
+                  placeholder="12-digit Aadhaar number"
+                  maxLength={12}
+                  inputMode="numeric"
+                  className={cn(errors.motherAadhaar && 'border-destructive')}
+                />
+                {errors.motherAadhaar ? (
+                  <span className="text-xs text-destructive">{errors.motherAadhaar.message}</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Optional — 12 digits</span>
+                )}
+              </div>
+              <div className="col-span-3" />{/* spacer */}
+
               <div className="col-span-3">
                 <label className="text-sm font-medium">Mobile Number *</label>
                 <Input
                   {...register('contactNumber')}
                   placeholder="10-digit mobile number"
+                  maxLength={10}
+                  inputMode="numeric"
                   className={cn(errors.contactNumber && 'border-destructive')}
                 />
                 {errors.contactNumber && (
@@ -675,7 +858,78 @@ export default function RegisterChildPage() {
               </div>
               <div className="col-span-3">
                 <label className="text-sm font-medium">WhatsApp Number</label>
-                <Input {...register('whatsappNumber')} placeholder="WhatsApp number" />
+                {/* Option selector */}
+                <div className="flex gap-4 mt-1 mb-1">
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="whatsappOption"
+                      value="same"
+                      checked={whatsappOption === 'same'}
+                      onChange={() => {
+                        setWhatsappOption('same');
+                        setValue('whatsappNumber', contactNumberValue || '', { shouldValidate: true });
+                      }}
+                      className="accent-primary"
+                    />
+                    Same as mobile
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="whatsappOption"
+                      value="not_available"
+                      checked={whatsappOption === 'not_available'}
+                      onChange={() => {
+                        setWhatsappOption('not_available');
+                        setValue('whatsappNumber', '', { shouldValidate: false });
+                      }}
+                      className="accent-primary"
+                    />
+                    Not available
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="whatsappOption"
+                      value="custom"
+                      checked={whatsappOption === 'custom'}
+                      onChange={() => {
+                        setWhatsappOption('custom');
+                        setValue('whatsappNumber', '', { shouldValidate: false });
+                      }}
+                      className="accent-primary"
+                    />
+                    Custom
+                  </label>
+                </div>
+                {whatsappOption === 'same' ? (
+                  <Input
+                    value={contactNumberValue || ''}
+                    readOnly
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed"
+                    placeholder="Auto-filled from mobile number"
+                  />
+                ) : whatsappOption === 'not_available' ? (
+                  <Input
+                    value="Not available"
+                    readOnly
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed text-muted-foreground"
+                  />
+                ) : (
+                  <Input
+                    {...register('whatsappNumber')}
+                    placeholder="WhatsApp number"
+                    maxLength={10}
+                    inputMode="numeric"
+                    className={cn(errors.whatsappNumber && 'border-destructive')}
+                  />
+                )}
+                {errors.whatsappNumber && whatsappOption === 'custom' && (
+                  <span className="text-xs text-destructive">{errors.whatsappNumber.message}</span>
+                )}
               </div>
               <div className="col-span-3">
                 <label className="text-sm font-medium">Alternate Phone</label>
@@ -740,13 +994,21 @@ export default function RegisterChildPage() {
                 <Input {...register('pinCode')} />
               </div>
 
-              {/* Guardian Photo Upload */}
+              {/* Guardian Camera Capture */}
               <div className="col-span-6">
                 <label className="text-sm font-medium">Photo of Mother / Father / Guardian</label>
                 <div className="mt-2 flex items-start gap-5">
-                  {/* Preview */}
+                  {/* Preview / Viewfinder */}
                   <div className="shrink-0">
-                    {guardianPhotoPreview ? (
+                    {isCameraOpen ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-40 h-32 rounded-xl object-cover ring-2 ring-violet-400 shadow-lg bg-black"
+                      />
+                    ) : guardianPhotoPreview ? (
                       <img
                         src={guardianPhotoPreview}
                         alt="Guardian"
@@ -761,46 +1023,71 @@ export default function RegisterChildPage() {
                     )}
                   </div>
 
-                  {/* Upload controls */}
-                  <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={() => guardianPhotoRef.current?.click()}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                      Upload Photo
-                    </button>
-                    {guardianPhotoPreview && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGuardianPhotoPreview(null);
-                          setValue('guardianPhotoUrl', '');
-                          if (guardianPhotoRef.current) guardianPhotoRef.current.value = '';
-                        }}
-                        className="text-xs text-destructive hover:underline text-left"
-                      >
-                        Remove photo
-                      </button>
+                  {/* Controls */}
+                  <div className="flex flex-col gap-2 justify-center">
+                    {isCameraOpen ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={capturePhoto}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors shadow"
+                        >
+                          {/* Shutter icon */}
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="4" />
+                            <path d="M9 3h6l1.5 2H18a2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h1.5L9 3z" />
+                          </svg>
+                          Capture Photo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={closeCamera}
+                          className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={openCamera}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium hover:bg-muted transition-colors"
+                        >
+                          {/* Camera icon */}
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                          </svg>
+                          {guardianPhotoPreview ? 'Retake Photo' : 'Open Camera'}
+                        </button>
+                        {guardianPhotoPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGuardianPhotoPreview(null);
+                              setValue('guardianPhotoUrl', '');
+                            }}
+                            className="text-xs text-destructive hover:underline text-left"
+                          >
+                            Remove photo
+                          </button>
+                        )}
+                        <p className="text-xs text-muted-foreground">Uses your device camera.</p>
+                      </>
                     )}
-                    <p className="text-xs text-muted-foreground">JPG, PNG or WEBP. Max 5 MB.</p>
                   </div>
 
+                  {/* Hidden fallback file input (capture="user" for mobile) */}
                   <input
                     ref={guardianPhotoRef}
                     type="file"
                     accept="image/*"
+                    capture="user"
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 5 * 1024 * 1024) {
-                        toast.error('Photo must be under 5 MB');
-                        return;
-                      }
                       const reader = new FileReader();
                       reader.onload = (ev) => {
                         const dataUrl = ev.target?.result as string;
@@ -817,26 +1104,7 @@ export default function RegisterChildPage() {
 
           {currentStep === 2 && (
             <FormSection title="Socio-Demographics">
-              <div className="col-span-3">
-                <label className="text-sm font-medium">Referred By</label>
-                {referredByValue === 'others' ? (
-                  <div className="flex gap-2 mt-1">
-                    <Input {...register('referredByOther')} placeholder="Type referral source" autoFocus />
-                    <Button variant="outline" size="sm" className="px-2" onClick={() => { setValue('referredBy', undefined); setValue('referredByOther', undefined); }}>X</Button>
-                  </div>
-                ) : (
-                  <select
-                    {...register('referredBy')}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                  >
-                    <option value="">-- Select --</option>
-                    <option value="pocd_staff">POCD Staff</option>
-                    <option value="doctor">Doctor</option>
-                    <option value="self">Self</option>
-                    <option value="others">Others (Specify)</option>
-                  </select>
-                )}
-              </div>
+
               <div className="col-span-3">
                 <label className="text-sm font-medium">Out Reach Service / NBS Centre</label>
                 <Input 
@@ -1099,7 +1367,7 @@ export default function RegisterChildPage() {
                   <Row label="MR Records No." value={v.hospitalNumber} />
                   <Row label="POCD Number" value={v.pocdNumber} />
                   <Row label="Unique Mother ID" value={v.uniqueMotherId} />
-                  <Row label="First Name" value={v.firstName} />
+                  <Row label="First Name" value={firstNamePrefix === 'bo' ? `B/o ${v.firstName || ''}`.trim() : v.firstName} />
                   <Row label="Last Name" value={v.lastName} />
                   <Row label="Gender" value={v.gender ? v.gender.charAt(0).toUpperCase() + v.gender.slice(1) : undefined} />
                   <Row label="Date of Birth" value={v.dateOfBirth} />
@@ -1109,6 +1377,35 @@ export default function RegisterChildPage() {
                 <SectionHead title="Step 2 — Parent Information" icon="👨‍👩‍👧" />
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
                   <Row label="Mother's Name" value={v.motherName} />
+                  {v.motherAadhaar && (
+                    <div className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0 text-sm">
+                      <span className="text-muted-foreground w-40 shrink-0">Mother&apos;s Aadhaar</span>
+                      <span className="font-medium tracking-widest flex-1">
+                        {showAadhaar
+                          ? v.motherAadhaar.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')
+                          : `XXXX XXXX ${v.motherAadhaar.slice(-4)}`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAadhaar((p) => !p)}
+                        className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
+                        title={showAadhaar ? 'Hide Aadhaar' : 'Show full Aadhaar'}
+                      >
+                        {showAadhaar ? (
+                          /* eye-off */
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                          </svg>
+                        ) : (
+                          /* eye */
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  )}
                   <Row label="Father's Name" value={v.fatherName} />
                   <Row label="Mobile Number" value={v.contactNumber} />
                   <Row label="Alternate Phone" value={v.phone2} />
@@ -1128,10 +1425,7 @@ export default function RegisterChildPage() {
                 {/* Step 3 — Socio-Demographics */}
                 <SectionHead title="Step 3 — Socio-Demographics" icon="📊" />
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
-                  <Row label="Referred By" value={v.referredBy?.replace('_', ' ')} />
-                  {v.referredBy === 'others' && (
-                    <Row label="Referred By (specify)" value={v.referredByOther} />
-                  )}
+
                   <Row label="NBS Centre" value={v.nbsCentre} />
                   <Row label="Region" value={v.region ? v.region.charAt(0).toUpperCase() + v.region.slice(1) : undefined} />
                   <Row label="Socio-Economic Status" value={v.socioEconomicStatus?.toUpperCase()} />

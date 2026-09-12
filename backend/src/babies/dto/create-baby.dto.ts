@@ -28,6 +28,7 @@ export class CreateBabyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() mrNumber?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() pocdNumber?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() uniqueMotherId?: string;
+  @ApiPropertyOptional({ description: 'twin | triplet | second_child | third_child | first_child' }) @IsOptional() @IsString() birthOrder?: string;
 
   // ── Child info ──
   @ApiPropertyOptional() @IsOptional() @IsString() firstName?: string;

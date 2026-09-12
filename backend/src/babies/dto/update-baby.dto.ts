@@ -34,6 +34,7 @@ export class UpdateBabyDto {
   @ApiPropertyOptional() @IsOptional() @IsString() mrNumber?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() pocdNumber?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() uniqueMotherId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() birthOrder?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() firstName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() lastName?: string;

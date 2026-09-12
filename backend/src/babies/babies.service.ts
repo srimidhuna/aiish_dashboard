@@ -87,6 +87,27 @@ export class BabiesService {
     });
   }
 
+  async checkUniqueMotherId(uniqueMotherId: string, excludeId?: string) {
+    const matches = await this.prisma.baby.findMany({
+      where: {
+        uniqueMotherId,
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        dob: true,
+        gender: true,
+        birthOrder: true,
+        hospital: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return { exists: matches.length > 0, matches };
+  }
+
   async create(dto: CreateBabyDto, createdById: string) {
     const { riskFactorIds, assessment, ...babyData } = dto;
 

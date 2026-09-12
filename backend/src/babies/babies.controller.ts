@@ -45,6 +45,16 @@ export class BabiesController {
     return this.babiesService.list(query);
   }
 
+  @Get('check-mother-id')
+  @ApiOperation({ summary: 'Check if a uniqueMotherId already exists in the DB' })
+  @ApiOkResponse({ description: '{ exists: boolean, matches: [...] }' })
+  checkUniqueMotherId(
+    @Query('id') id: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.babiesService.checkUniqueMotherId(id, excludeId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single baby by id' })
   @ApiOkResponse({ description: 'Baby detail' })

@@ -116,6 +116,7 @@ model Baby {
   mrNumber                 String?                @map("mr_number")
   pocdNumber               String?                @map("pocd_number")
   uniqueMotherId           String?                @map("unique_mother_id")
+  birthOrder               String?                @map("birth_order")
   dob                      DateTime
   gender                   String
   motherName               String                 @map("mother_name")
