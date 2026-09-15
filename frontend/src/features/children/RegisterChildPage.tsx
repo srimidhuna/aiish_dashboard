@@ -89,11 +89,12 @@ const schema = z.object({
   caregiverConcern: z.boolean().default(false),
   hrrRemarks: z.string().optional(),
   craniofacialRemarks: z.string().optional(),
-  reflexMoro: z.enum(['normal', 'abnormal']).optional(),
-  reflexRooting: z.enum(['normal', 'abnormal']).optional(),
-  reflexBabinski: z.enum(['normal', 'abnormal']).optional(),
-  reflexPalmar: z.enum(['normal', 'abnormal']).optional(),
-  reflexPlantar: z.enum(['normal', 'abnormal']).optional(),
+  reflexMoro: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexRooting: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexBabinski: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexPalmar: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexPlantar: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexSucking: z.enum(['normal', 'abnormal', 'cnt']).optional(),
 
   entFindings: z.string().optional(),
   boaResult: passReferOnly.nullish().or(z.literal('')),
@@ -215,6 +216,12 @@ export default function RegisterChildPage() {
       caregiverConcern: false,
       hrrRemarks: '',
       craniofacialRemarks: '',
+      reflexMoro: 'normal',
+      reflexRooting: 'normal',
+      reflexBabinski: 'normal',
+      reflexPalmar: 'normal',
+      reflexPlantar: 'normal',
+      reflexSucking: 'normal',
     },
   });
 
@@ -401,6 +408,7 @@ export default function RegisterChildPage() {
         reflexBabinski: editChild.assessment?.reflexBabinski,
         reflexPalmar: editChild.assessment?.reflexPalmar,
         reflexPlantar: editChild.assessment?.reflexPlantar,
+        reflexSucking: editChild.assessment?.reflexSucking,
         remarks: editChild.remarks,
         entFindings: latestScreening?.entFindings ?? '',
         boaResult: latestScreening?.boaResult ?? '',
@@ -436,6 +444,7 @@ export default function RegisterChildPage() {
         reflexBabinski,
         reflexPalmar,
         reflexPlantar,
+        reflexSucking,
         entFindings,
         boaResult,
         teoaeRight,
@@ -494,6 +503,7 @@ export default function RegisterChildPage() {
             reflexBabinski,
             reflexPalmar,
             reflexPlantar,
+            reflexSucking,
           }).filter(([, v]) => (v as any) !== '' && v !== undefined && v !== null)
         ) as Parameters<typeof childrenService.create>[0]['assessment'],
       };
@@ -842,6 +852,22 @@ export default function RegisterChildPage() {
               <input type="hidden" {...register('hospitalOfBirthId')} />
               <input type="hidden" {...register('districtId')} />
               <input type="hidden" {...register('audiologistId')} />
+
+              {/* Staff ID moved here from Reflex Assessment step */}
+              <div className="col-span-3">
+                <label className="text-sm font-medium">Staff ID (Assessing)</label>
+                <select
+                  {...register('assessingStaffId')}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
+                >
+                  <option value="">-- Select Staff --</option>
+                  {staffList.filter(s => s.status !== 'deleted').map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.employeeId} — {s.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </FormSection>
           )}
 
@@ -1374,22 +1400,6 @@ export default function RegisterChildPage() {
 
           {currentStep === 4 && (
             <FormSection title="Reflex Assessment">
-              <div className="col-span-3">
-                <label className="text-sm font-medium">Staff ID (Assessing)</label>
-                <select
-                  {...register('assessingStaffId')}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1"
-                >
-                  <option value="">-- Select Staff --</option>
-                  {staffList.filter(s => s.status !== 'deleted').map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.employeeId} — {s.fullName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-
               <div className="col-span-6 space-y-2">
                 <h4 className="text-sm font-semibold">New Born Reflexes</h4>
                 <ReflexSelector register={register} name="reflexMoro" label="Moro / Startle" />
@@ -1397,6 +1407,7 @@ export default function RegisterChildPage() {
                 <ReflexSelector register={register} name="reflexBabinski" label="Babinski" />
                 <ReflexSelector register={register} name="reflexPalmar" label="Palmar" />
                 <ReflexSelector register={register} name="reflexPlantar" label="Plantar" />
+                <ReflexSelector register={register} name="reflexSucking" label="Sucking" />
               </div>
             </FormSection>
           )}
@@ -1431,7 +1442,7 @@ export default function RegisterChildPage() {
               </div>
             );
             const reflexLabel = (val?: string) =>
-              val ? (val.charAt(0).toUpperCase() + val.slice(1)) : undefined;
+              ({ normal: 'Normal', abnormal: 'Abnormal', cnt: 'CNT' } as Record<string, string>)[val ?? ''] ?? val;
             const earLabel = (val?: string) =>
               ({ pass: 'Pass', refer: 'Refer', noisy: 'Noisy', cnt: 'CNT', not_done: 'Not Done' } as Record<string, string>)[val ?? ''] ?? val;
             return (
@@ -1566,6 +1577,7 @@ export default function RegisterChildPage() {
                   <Row label="Reflex — Babinski" value={reflexLabel(v.reflexBabinski)} />
                   <Row label="Reflex — Palmar" value={reflexLabel(v.reflexPalmar)} />
                   <Row label="Reflex — Plantar" value={reflexLabel(v.reflexPlantar)} />
+                  <Row label="Reflex — Sucking" value={reflexLabel(v.reflexSucking)} />
                 </div>
 
                 {/* Step 6 — Screening */}

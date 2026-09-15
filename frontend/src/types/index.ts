@@ -77,6 +77,8 @@ export interface RecommendationType {
   label: string;
 }
 
+export type ReflexResult = 'normal' | 'abnormal' | 'cnt';
+
 export interface AudiologistAssessment {
   familyHistoryHearingLoss?: boolean;
   consanguinityDegree?: ConsanguinityDegree;
@@ -88,6 +90,7 @@ export interface AudiologistAssessment {
   reflexBabinski?: ReflexResult;
   reflexPalmar?: ReflexResult;
   reflexPlantar?: ReflexResult;
+  reflexSucking?: ReflexResult;
 }
 
 export interface Child {

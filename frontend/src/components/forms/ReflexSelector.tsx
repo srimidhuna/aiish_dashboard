@@ -23,6 +23,10 @@ export function ReflexSelector<T extends FieldValues>({
           <input type="radio" value="abnormal" {...register(name)} className="text-primary" />
           <span className="text-sm">Abnormal</span>
         </label>
+        <label className="flex items-center space-x-2">
+          <input type="radio" value="cnt" {...register(name)} className="text-primary" />
+          <span className="text-sm">CNT</span>
+        </label>
       </div>
     </div>
   );

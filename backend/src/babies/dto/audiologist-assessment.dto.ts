@@ -2,7 +2,7 @@ import { IsBoolean, IsOptional, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 const CONSANGUINITY = ['first', 'second', 'third'];
-const REFLEX = ['normal', 'abnormal'];
+const REFLEX = ['normal', 'abnormal', 'cnt'];
 
 export class AudiologistAssessmentDto {
   @ApiPropertyOptional({ default: false })
@@ -52,4 +52,9 @@ export class AudiologistAssessmentDto {
   @IsOptional()
   @IsIn(REFLEX)
   reflexPlantar?: string;
+
+  @ApiPropertyOptional({ enum: REFLEX })
+  @IsOptional()
+  @IsIn(REFLEX)
+  reflexSucking?: string;
 }

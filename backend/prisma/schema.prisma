@@ -202,6 +202,7 @@ model AudiologistAssessment {
   reflexBabinski           ReflexResult?        @map("reflex_babinski")
   reflexPalmar             ReflexResult?        @map("reflex_palmar")
   reflexPlantar            ReflexResult?        @map("reflex_plantar")
+  reflexSucking            ReflexResult?        @map("reflex_sucking")
   baby                     Baby                 @relation(fields: [babyId], references: [id])
 
   @@map("audiologist_assessments")
@@ -336,6 +337,7 @@ enum PassReferResult {
 enum ReflexResult {
   normal
   abnormal
+  cnt
 }
 
 /// Degree of consanguinity in AudiologistAssessment
