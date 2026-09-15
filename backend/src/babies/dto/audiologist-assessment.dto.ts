@@ -20,6 +20,14 @@ export class AudiologistAssessmentDto {
   @IsBoolean()
   caregiverConcern?: boolean;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  hrrRemarks?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  craniofacialRemarks?: string;
+
   @ApiPropertyOptional({ enum: REFLEX })
   @IsOptional()
   @IsIn(REFLEX)

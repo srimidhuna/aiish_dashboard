@@ -81,6 +81,8 @@ export interface AudiologistAssessment {
   familyHistoryHearingLoss?: boolean;
   consanguinityDegree?: ConsanguinityDegree;
   caregiverConcern?: boolean;
+  hrrRemarks?: string;
+  craniofacialRemarks?: string;
   reflexMoro?: ReflexResult;
   reflexRooting?: ReflexResult;
   reflexBabinski?: ReflexResult;

@@ -87,6 +87,8 @@ const schema = z.object({
   familyHistoryHearingLoss: z.boolean().default(false),
   consanguinityDegree: z.enum(['first', 'second', 'third']).optional().or(z.literal('')),
   caregiverConcern: z.boolean().default(false),
+  hrrRemarks: z.string().optional(),
+  craniofacialRemarks: z.string().optional(),
   reflexMoro: z.enum(['normal', 'abnormal']).optional(),
   reflexRooting: z.enum(['normal', 'abnormal']).optional(),
   reflexBabinski: z.enum(['normal', 'abnormal']).optional(),
@@ -211,6 +213,8 @@ export default function RegisterChildPage() {
       riskFactorIds: [],
       familyHistoryHearingLoss: false,
       caregiverConcern: false,
+      hrrRemarks: '',
+      craniofacialRemarks: '',
     },
   });
 
@@ -223,6 +227,10 @@ export default function RegisterChildPage() {
   const riskFactorIds = watch('riskFactorIds');
   const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
   const consanguinityDegree = watch('consanguinityDegree');
+  const caregiverConcernValue = watch('caregiverConcern');
+  const hrrRemarksValue = watch('hrrRemarks');
+  const craniofacialRemarksValue = watch('craniofacialRemarks');
+
 
   const religionValue = watch('religion');
   const educationLevelValue = watch('educationLevel');
@@ -259,14 +267,15 @@ export default function RegisterChildPage() {
     const hasRiskFactor =
       (riskFactorIds && riskFactorIds.length > 0) ||
       familyHistoryHearingLoss ||
-      !!consanguinityDegree;
+      !!consanguinityDegree ||
+      caregiverConcernValue;
 
     if (hasRiskFactor) {
       setHrrFindings('hrr');
     } else {
       setHrrFindings('no_hrr');
     }
-  }, [riskFactorIds, familyHistoryHearingLoss, consanguinityDegree]);
+  }, [riskFactorIds, familyHistoryHearingLoss, consanguinityDegree, caregiverConcernValue]);
 
   const { data: staffList = [] } = useQuery({
     queryKey: ['staff'],
@@ -277,6 +286,12 @@ export default function RegisterChildPage() {
     queryKey: ['risk-categories'],
     queryFn: () => mastersService.listRiskCategories(),
   });
+
+  // Derive the craniofacial category ID from the loaded list (must be after riskCategories query)
+  const craniofacialCategoryId = riskCategories.find((rc) =>
+    rc.label.toLowerCase().includes('craniofacial')
+  )?.id;
+  const craniofacialSelected = !!(craniofacialCategoryId && riskFactorIds.includes(craniofacialCategoryId));
 
   const babyAge = (() => {
     if (!dateOfBirthValue) return null;
@@ -379,6 +394,8 @@ export default function RegisterChildPage() {
         familyHistoryHearingLoss: editChild.assessment?.familyHistoryHearingLoss ?? false,
         consanguinityDegree: editChild.assessment?.consanguinityDegree,
         caregiverConcern: editChild.assessment?.caregiverConcern ?? false,
+        hrrRemarks: editChild.assessment?.hrrRemarks ?? '',
+        craniofacialRemarks: editChild.assessment?.craniofacialRemarks ?? '',
         reflexMoro: editChild.assessment?.reflexMoro,
         reflexRooting: editChild.assessment?.reflexRooting,
         reflexBabinski: editChild.assessment?.reflexBabinski,
@@ -470,6 +487,8 @@ export default function RegisterChildPage() {
             familyHistoryHearingLoss,
             consanguinityDegree,
             caregiverConcern,
+            hrrRemarks: data.hrrRemarks,
+            craniofacialRemarks: data.craniofacialRemarks,
             reflexMoro,
             reflexRooting,
             reflexBabinski,
@@ -588,12 +607,30 @@ export default function RegisterChildPage() {
 
   const onNext = async () => {
     const isStepValid = await trigger(STEP_FIELDS[currentStep]);
-    if (isStepValid) {
-      if (editId && currentStep === 4) {
-        setCurrentStep(6);
-      } else {
-        setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-      }
+    if (!isStepValid) return;
+
+    // If Unique Mother ID is a duplicate, require birth order selection before proceeding
+    if (currentStep === 0 && motherIdCheck.status === 'duplicate' && !getValues('birthOrder')) {
+      toast.error('Duplicate Unique Mother ID detected — please select the birth order relationship (Twin, Triplet, etc.) before continuing.');
+      return;
+    }
+
+    // HRR step (step 3): remarks is mandatory when HRR(1)
+    if (currentStep === 3 && hrrFindings === 'hrr' && !getValues('hrrRemarks')?.trim()) {
+      toast.error('HRR Remarks is required when HRR findings is HRR (1).');
+      return;
+    }
+
+    // HRR step (step 3): craniofacial remarks mandatory when craniofacial is selected
+    if (currentStep === 3 && craniofacialSelected && !getValues('craniofacialRemarks')?.trim()) {
+      toast.error('Please describe the craniofacial anomaly details before proceeding.');
+      return;
+    }
+
+    if (editId && currentStep === 4) {
+      setCurrentStep(6);
+    } else {
+      setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
     }
   };
 
@@ -1250,41 +1287,86 @@ export default function RegisterChildPage() {
                       <option value="third">3rd Degree</option>
                     </select>
                   </div>
+                  <div className="flex items-start space-x-3 pt-1">
+                    <input
+                      type="checkbox"
+                      id="caregiverConcernHRR"
+                      {...register('caregiverConcern')}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-input text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="caregiverConcernHRR" className="text-sm font-medium leading-none">
+                      Caregiver&apos;s Concern
+                    </label>
+                  </div>
                 </RiskFactorChecklist>
               </div>
+
+              {/* Craniofacial anomalies — mandatory comment box */}
+              {craniofacialSelected && (
+                <div className="col-span-6 mt-1">
+                  <label className="text-sm font-medium">
+                    Craniofacial Anomaly Details
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground mb-1">Required — describe the specific craniofacial anomaly (type, severity, affected structures, etc.).</p>
+                  <textarea
+                    {...register('craniofacialRemarks')}
+                    rows={3}
+                    placeholder="e.g. Microtia grade II, right ear — auricular malformation with partial canal atresia..."
+                    className={`mt-1 flex w-full rounded-md border px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent ${
+                      !craniofacialRemarksValue?.trim()
+                        ? 'border-red-400 focus:ring-red-400'
+                        : 'border-input'
+                    }`}
+                  />
+                  {!craniofacialRemarksValue?.trim() && (
+                    <p className="text-xs text-red-500 mt-1">Please describe the craniofacial anomaly details.</p>
+                  )}
+                </div>
+              )}
               <div className="col-span-6 flex items-center gap-4 pt-2 border-t mt-2">
                 <span className="text-sm font-medium">HRR findings</span>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1.5">
                   <input
                     type="radio"
                     name="hrrFindings"
                     checked={hrrFindings === 'no_hrr'}
-                    onChange={() => setHrrFindings('no_hrr')}
-                    className="h-4 w-4 accent-primary"
+                    readOnly
+                    className="h-4 w-4 accent-primary cursor-not-allowed"
                   />
                   <span className="text-sm">No HRR (0)</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1.5">
                   <input
                     type="radio"
                     name="hrrFindings"
                     checked={hrrFindings === 'hrr'}
-                    onChange={() => setHrrFindings('hrr')}
-                    className="h-4 w-4 accent-primary"
+                    readOnly
+                    className="h-4 w-4 accent-primary cursor-not-allowed"
                   />
                   <span className="text-sm">HRR (1)</span>
                 </label>
+                <span className="text-xs text-muted-foreground italic ml-2">(auto-computed from selections above)</span>
               </div>
-              <div className="col-span-6 flex items-center space-x-2 mt-2">
-                <input
-                  type="checkbox"
-                  id="caregiverConcern"
-                  {...register('caregiverConcern')}
-                  className="h-4 w-4 shrink-0 rounded border-input text-primary focus:ring-primary"
-                />
-                <label htmlFor="caregiverConcern" className="text-sm font-medium leading-none">
-                  Caregiver concern
+              <div className="col-span-6 mt-2">
+                <label className="text-sm font-medium">
+                  HRR Remarks
+                  {hrrFindings === 'hrr' && <span className="text-red-500 ml-1">*</span>}
+                  {hrrFindings === 'no_hrr' && <span className="text-muted-foreground text-xs ml-1">(optional)</span>}
                 </label>
+                <textarea
+                  {...register('hrrRemarks')}
+                  rows={2}
+                  placeholder={hrrFindings === 'hrr' ? 'Required — describe the HRR findings...' : 'Enter any remarks about the HRR findings...'}
+                  className={`mt-1 flex w-full rounded-md border px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent ${
+                    hrrFindings === 'hrr' && !hrrRemarksValue?.trim()
+                      ? 'border-red-400 focus:ring-red-400'
+                      : 'border-input'
+                  }`}
+                />
+                {hrrFindings === 'hrr' && !hrrRemarksValue?.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Remarks is required when HRR findings is HRR (1).</p>
+                )}
               </div>
 
             </FormSection>
@@ -1461,6 +1543,9 @@ export default function RegisterChildPage() {
                     </span>
                   </div>
                   <Row label="HRR Findings" value={hrrFindings === 'hrr' ? 'HRR (1)' : 'No HRR (0)'} />
+                  <Row label="HRR Remarks" value={v.hrrRemarks} />
+                  <Row label="Caregiver Concern" value={v.caregiverConcern ? 'Yes' : 'No'} />
+                  {v.craniofacialRemarks && <Row label="Craniofacial Anomaly Details" value={v.craniofacialRemarks} />}
                 </div>
 
                 {/* Step 5 — Audiologist Assessment */}
@@ -1474,7 +1559,7 @@ export default function RegisterChildPage() {
                     })()}
                   />
                   <Row label="Family History Hearing Loss" value={v.familyHistoryHearingLoss ? 'Yes' : 'No'} />
-                  <Row label="Caregiver Concern" value={v.caregiverConcern ? 'Yes' : 'No'} />
+
                   <Row label="Consanguinity" value={v.consanguinityDegree} />
                   <Row label="Reflex — Moro/Startle" value={reflexLabel(v.reflexMoro)} />
                   <Row label="Reflex — Rooting" value={reflexLabel(v.reflexRooting)} />

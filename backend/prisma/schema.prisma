@@ -195,6 +195,8 @@ model AudiologistAssessment {
   familyHistoryHearingLoss Boolean              @default(false) @map("family_history_hearing_loss")
   consanguinityDegree      ConsanguinityDegree? @map("consanguinity_degree")
   caregiverConcern         Boolean              @default(false) @map("caregiver_concern")
+  hrrRemarks               String?              @map("hrr_remarks")
+  craniofacialRemarks      String?              @map("craniofacial_remarks")
   reflexMoro               ReflexResult?        @map("reflex_moro")
   reflexRooting            ReflexResult?        @map("reflex_rooting")
   reflexBabinski           ReflexResult?        @map("reflex_babinski")
