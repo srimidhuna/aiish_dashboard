@@ -6,6 +6,7 @@ const OPTION_LABELS: Record<string, string> = {
   noisy: 'Noisy',
   cnt: 'CNT',
   not_done: 'Not Done',
+  na: 'N/A',
 };
 
 interface EarResultSelectorProps<T extends FieldValues> {

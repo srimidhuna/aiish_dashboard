@@ -86,7 +86,18 @@ export function ScreeningStep({
   const oaePassed     = showTeoae ? teoaePassed : (showDpoae ? dpoaePassed : false);
   const oaeFailed     = showTeoae ? anyEarFailed(teoaeR, teoaeL) : (showDpoae ? anyEarFailed(dpoaeR, dpoaeL) : false);
 
-  const showAabr1     = oaeFailed;
+  const riskFactorIds = watch('riskFactorIds') as string[] | undefined;
+  const familyHistoryHearingLoss = watch('familyHistoryHearingLoss') as boolean | undefined;
+  const consanguinityDegree = watch('consanguinityDegree') as string | undefined;
+  const caregiverConcernValue = watch('caregiverConcern') as boolean | undefined;
+
+  const hasHRR =
+    (riskFactorIds && riskFactorIds.length > 0) ||
+    familyHistoryHearingLoss ||
+    (consanguinityDegree && consanguinityDegree !== 'none') ||
+    caregiverConcernValue;
+
+  const showAabr1     = hasHRR || oaeFailed;
   const aabr1Passed   = bothEarsPassed(aabr1R, aabr1L);
   const allFailed     = showAabr1 && anyEarFailed(aabr1R, aabr1L);
 
@@ -118,6 +129,29 @@ export function ScreeningStep({
   useEffect(() => {
     if (!showAabr1) { setValue('aabr1Right', undefined); setValue('aabr1Left', undefined); }
   }, [showAabr1, setValue]);
+
+  // Auto-fill N/A for AABR if one ear passed and the other referred in OAE
+  useEffect(() => {
+    const subscription = watch((value, { name }) => {
+      if (name === 'teoaeRight' || name === 'teoaeLeft') {
+        if (value.teoaeRight === 'pass' && value.teoaeLeft === 'refer') {
+          setValue('aabr1Right', 'na');
+        }
+        if (value.teoaeLeft === 'pass' && value.teoaeRight === 'refer') {
+          setValue('aabr1Left', 'na');
+        }
+      }
+      if (name === 'dpoaeRight' || name === 'dpoaeLeft') {
+        if (value.dpoaeRight === 'pass' && value.dpoaeLeft === 'refer') {
+          setValue('aabr1Right', 'na');
+        }
+        if (value.dpoaeLeft === 'pass' && value.dpoaeRight === 'refer') {
+          setValue('aabr1Left', 'na');
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, setValue]);
 
   // Progress bar badges
   const boaStatus   = !boa ? 'active' : boa === 'pass' ? 'pass' : 'fail';
@@ -250,7 +284,7 @@ export function ScreeningStep({
                 register={register}
                 name="aabr1Right"
                 label="Right Ear"
-                options={['pass', 'refer', 'cnt', 'not_done']}
+                options={['pass', 'refer', 'cnt', 'not_done', 'na']}
               />
             </div>
             <div className="col-span-3">
@@ -258,7 +292,7 @@ export function ScreeningStep({
                 register={register}
                 name="aabr1Left"
                 label="Left Ear"
-                options={['pass', 'refer', 'cnt', 'not_done']}
+                options={['pass', 'refer', 'cnt', 'not_done', 'na']}
               />
             </div>
           </div>
@@ -271,39 +305,33 @@ export function ScreeningStep({
       {/* Hidden field always registered so form state is always valid regardless of BOA selection */}
       <input type="hidden" {...register('overallResult')} />
 
-      {boa && (
-        <div className="rounded-xl border border-border bg-card shadow-sm px-5 py-4">
-          <p className="text-sm font-semibold text-foreground mb-2">Overall Screening Result</p>
-          {oaePassed || aabr1Passed ? (
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">PASS</span>
+      <div className="rounded-xl border border-border bg-card shadow-sm px-5 py-4">
+        <p className="text-sm font-semibold text-foreground mb-2">Overall Screening Result</p>
+        {oaePassed || aabr1Passed ? (
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">PASS</span>
+          </div>
+        ) : allFailed ? (
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800">
+              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <span className="text-sm font-bold text-red-700 dark:text-red-300">REFER — Re-Screening required</span>
             </div>
-          ) : allFailed ? (
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800">
-                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <span className="text-sm font-bold text-red-700 dark:text-red-300">REFER — Re-Screening required</span>
+            {followUpDate && (
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
+                <Calendar className="h-4 w-4" />
+                Re-Screening: {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               </div>
-              {followUpDate && (
-                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
-                  <Calendar className="h-4 w-4" />
-                  Re-Screening: {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted border border-border">
-              <span className="text-sm text-muted-foreground">Awaiting test results…</span>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted border border-border">
+            <span className="text-sm text-muted-foreground">Awaiting test results…</span>
+          </div>
+        )}
+      </div>
 
-      {/* Informational note that all screening is optional */}
-      <p className="text-xs text-muted-foreground text-center pt-1">
-        All screening tests on this step are optional. You can register the child now and record screening results later.
-      </p>
     </div>
   );
 }

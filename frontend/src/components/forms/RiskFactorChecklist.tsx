@@ -11,7 +11,7 @@ interface RiskFactorChecklistProps {
 }
 
 export function RiskFactorChecklist({ selectedIds, onChange, readOnly, children }: RiskFactorChecklistProps) {
-  const { data: categories, isLoading } = useQuery({
+  const { data: categories, isLoading, isError } = useQuery({
     queryKey: ['risk-categories'],
     queryFn: () => mastersService.listRiskCategories(),
   });
@@ -27,6 +27,14 @@ export function RiskFactorChecklist({ selectedIds, onChange, readOnly, children 
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className="h-5 w-full" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError || !categories) {
+    return (
+      <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
+        Failed to load High-Risk Register categories. Please ensure the backend server is running.
       </div>
     );
   }

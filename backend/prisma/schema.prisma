@@ -116,7 +116,6 @@ model Baby {
   mrNumber                 String?                @map("mr_number")
   pocdNumber               String?                @map("pocd_number")
   uniqueMotherId           String?                @map("unique_mother_id")
-  birthOrder               String?                @map("birth_order")
   dob                      DateTime
   gender                   String
   motherName               String                 @map("mother_name")
@@ -154,14 +153,15 @@ model Baby {
   timeOfBirth              String?                @map("time_of_birth")
   referredBy               ReferredBy?            @map("referred_by")
   educationLevel           EducationLevelParent?  @map("education_level")
-  educationLevelOther      String?                @map("education_level_other")
   religion                 Religion?
-  religionOther            String?                @map("religion_other")
   socioEconomicStatus      SocioEconomicStatus?   @map("socio_economic_status")
   assessingStaffId         String?                @map("assessing_staff_id")
   assessingStaffEmployeeId String?                @map("assessing_staff_employee_id")
   assessingStaffName       String?                @map("assessing_staff_name")
   whatsappNumber           String?                @map("whatsapp_number")
+  educationLevelOther      String?                @map("education_level_other")
+  religionOther            String?                @map("religion_other")
+  birthOrder               String?                @map("birth_order")
   assessment               AudiologistAssessment?
   createdBy                User                   @relation("BabyCreatedBy", fields: [createdById], references: [id])
   deletedBy                User?                  @relation("BabyDeletedBy", fields: [deletedById], references: [id])
@@ -195,13 +195,13 @@ model AudiologistAssessment {
   familyHistoryHearingLoss Boolean              @default(false) @map("family_history_hearing_loss")
   consanguinityDegree      ConsanguinityDegree? @map("consanguinity_degree")
   caregiverConcern         Boolean              @default(false) @map("caregiver_concern")
-  hrrRemarks               String?              @map("hrr_remarks")
-  craniofacialRemarks      String?              @map("craniofacial_remarks")
   reflexMoro               ReflexResult?        @map("reflex_moro")
   reflexRooting            ReflexResult?        @map("reflex_rooting")
   reflexBabinski           ReflexResult?        @map("reflex_babinski")
   reflexPalmar             ReflexResult?        @map("reflex_palmar")
   reflexPlantar            ReflexResult?        @map("reflex_plantar")
+  hrrRemarks               String?              @map("hrr_remarks")
+  craniofacialRemarks      String?              @map("craniofacial_remarks")
   reflexSucking            ReflexResult?        @map("reflex_sucking")
   baby                     Baby                 @relation(fields: [babyId], references: [id])
 
@@ -325,6 +325,7 @@ enum ScreeningTestResult {
   noisy
   cnt
   not_done
+  na
 }
 
 /// Used for Screening.overall_result and Screening.boa_result (pass/refer only)

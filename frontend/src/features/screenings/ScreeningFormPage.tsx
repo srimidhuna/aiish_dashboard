@@ -14,8 +14,8 @@ import { EarResultSelector } from '../../components/forms/EarResultSelector';
 import { FormSection } from '../../components/forms/FormSection';
 import { Skeleton } from '../../components/ui/Skeleton';
 
-const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done']);
-const passReferOnly = z.enum(['pass', 'refer', 'cnt', 'not_done']);
+const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done', 'na']);
+const passReferOnly = z.enum(['pass', 'refer', 'cnt', 'not_done', 'na']);
 
 const schema = z.object({
   entFindings: z.string().optional(),
@@ -53,9 +53,42 @@ export default function ScreeningFormPage() {
     enabled: !!draftId,
   });
 
-  const { register, handleSubmit, reset, getValues } = useForm<FormData>({
+  const { register, handleSubmit, reset, getValues, watch, setValue } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
+
+  useEffect(() => {
+    const subscription = watch((value, { name }) => {
+      // TEOAE
+      if (name === 'teoaeRight' || name === 'teoaeLeft') {
+        if (value.teoaeRight === 'pass' && value.teoaeLeft === 'refer') {
+          setValue('aabr1Right', 'na');
+        }
+        if (value.teoaeLeft === 'pass' && value.teoaeRight === 'refer') {
+          setValue('aabr1Left', 'na');
+        }
+      }
+      // DPOAE
+      if (name === 'dpoaeRight' || name === 'dpoaeLeft') {
+        if (value.dpoaeRight === 'pass' && value.dpoaeLeft === 'refer') {
+          setValue('aabr1Right', 'na');
+        }
+        if (value.dpoaeLeft === 'pass' && value.dpoaeRight === 'refer') {
+          setValue('aabr1Left', 'na');
+        }
+      }
+      // AABR 1
+      if (name === 'aabr1Right' || name === 'aabr1Left') {
+        if (value.aabr1Right === 'pass' && value.aabr1Left === 'refer') {
+          setValue('aabr2Right', 'na');
+        }
+        if (value.aabr1Left === 'pass' && value.aabr1Right === 'refer') {
+          setValue('aabr2Left', 'na');
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, setValue]);
 
   useEffect(() => {
     if (draft) {
@@ -160,7 +193,7 @@ export default function ScreeningFormPage() {
                   register={register}
                   name="boaResult"
                   label="BOA Result"
-                  options={['pass', 'refer', 'cnt', 'not_done']}
+                  options={['pass', 'refer', 'cnt', 'not_done', 'na']}
                 />
               </div>
             </FormSection>
@@ -202,7 +235,7 @@ export default function ScreeningFormPage() {
                   register={register}
                   name="aabr1Right"
                   label="Right Ear"
-                  options={['pass', 'refer', 'cnt', 'not_done']}
+                  options={['pass', 'refer', 'cnt', 'not_done', 'na']}
                 />
               </div>
               <div className="col-span-3">
@@ -210,7 +243,7 @@ export default function ScreeningFormPage() {
                   register={register}
                   name="aabr1Left"
                   label="Left Ear"
-                  options={['pass', 'refer', 'cnt', 'not_done']}
+                  options={['pass', 'refer', 'cnt', 'not_done', 'na']}
                 />
               </div>
             </FormSection>
@@ -220,7 +253,7 @@ export default function ScreeningFormPage() {
                   register={register}
                   name="aabr2Right"
                   label="Right Ear"
-                  options={['pass', 'refer', 'cnt', 'not_done']}
+                  options={['pass', 'refer', 'cnt', 'not_done', 'na']}
                 />
               </div>
               <div className="col-span-3">
@@ -228,7 +261,7 @@ export default function ScreeningFormPage() {
                   register={register}
                   name="aabr2Left"
                   label="Left Ear"
-                  options={['pass', 'refer', 'cnt', 'not_done']}
+                  options={['pass', 'refer', 'cnt', 'not_done', 'na']}
                 />
               </div>
             </FormSection>
