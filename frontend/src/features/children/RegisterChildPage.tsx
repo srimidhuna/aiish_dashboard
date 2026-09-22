@@ -121,7 +121,7 @@ const STEPS = [
   { id: 'risk', label: 'High-Risk Register' },
   { id: 'assessment', label: "Reflex Assessment" },
   { id: 'screening', label: 'Screening' },
-  { id: 'notes', label: 'Additional Notes' },
+  { id: 'notes', label: 'Remarks' },
   { id: 'review', label: 'Review & Confirm' },
 ];
 
@@ -1413,9 +1413,24 @@ export default function RegisterChildPage() {
           )}
 
           {currentStep === 6 && (
-            <FormSection title="Additional Notes">
+            <FormSection title="Remarks">
               <div className="col-span-6">
-                <label className="text-sm font-medium">Remarks</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Remarks (Optional)</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="remarks-nil"
+                      checked={watch('remarks') === 'NIL'}
+                      onChange={(e) => {
+                        if (e.target.checked) setValue('remarks', 'NIL');
+                        else if (watch('remarks') === 'NIL') setValue('remarks', '');
+                      }}
+                      className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="remarks-nil" className="text-sm cursor-pointer select-none">NIL</label>
+                  </div>
+                </div>
                 <textarea
                   {...register('remarks')}
                   className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm mt-1"
@@ -1614,8 +1629,8 @@ export default function RegisterChildPage() {
                   )}
                 </div>
 
-                {/* Step 7 — Additional Notes */}
-                <SectionHead title="Step 7 — Additional Notes" icon="📝" />
+                {/* Step 7 — Remarks */}
+                <SectionHead title="Step 7 — Remarks" icon="📝" />
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
                   <Row label="Remarks" value={v.remarks} />
                 </div>
@@ -1668,7 +1683,18 @@ export default function RegisterChildPage() {
                   type="button"
                   disabled={mutation.isPending || !confirmed}
                   onClick={handleSubmit(
-                    (d) => mutation.mutate(d),
+                    (d) => {
+                      const demoFields = ['region', 'socioEconomicStatus', 'educationLevel', 'religion'];
+                      const missingFields = demoFields.filter(f => !d[f as keyof FormData]);
+                      
+                      if (missingFields.length > 0) {
+                        const confirmMsg = "Some socio-demographic details are missing. Are you sure you want to submit without them?";
+                        if (!window.confirm(confirmMsg)) {
+                          return;
+                        }
+                      }
+                      mutation.mutate(d);
+                    },
                     (errors) => {
                       console.log('Form validation errors:', errors);
                       const errorMessages = Object.values(errors).map(e => e?.message).filter(Boolean);

@@ -127,20 +127,9 @@ export default function ChildDetailsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Child Records</h1>
         <div className="space-x-2 print:hidden">
-          <Button variant="outline" onClick={() => window.print()}>
-            Print Summary
-          </Button>
           <Button variant="secondary" onClick={() => navigate(`/children/${id}/edit`)}>
             Edit Child
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDeleteChild}
-            disabled={deleteChild.isPending}
-          >
-            {deleteChild.isPending ? 'Deleting…' : 'Delete Child'}
-          </Button>
-          <Button onClick={() => navigate(`/screenings/new?childId=${id}`)}>New Screening</Button>
         </div>
       </div>
 
