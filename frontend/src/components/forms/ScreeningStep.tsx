@@ -6,9 +6,9 @@ import { TestHeader } from './TestHeader';
 import { Calendar, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
-/** Returns true when a result value is anything other than 'pass' AND is actually set */
+/** Returns true when a result value is anything other than 'pass' or 'na' AND is actually set */
 function isFailed(val: string | undefined): boolean {
-  return !!val && val !== 'pass';
+  return !!val && val !== 'pass' && val !== 'na';
 }
 
 /** Returns true when AT LEAST ONE ear of a two-ear test has failed */
@@ -16,9 +16,10 @@ function anyEarFailed(right: string | undefined, left: string | undefined): bool
   return isFailed(right) || isFailed(left);
 }
 
-/** Returns true when BOTH ears of a two-ear test have passed */
+/** Returns true when BOTH ears of a two-ear test have passed or are not applicable */
 function bothEarsPassed(right: string | undefined, left: string | undefined): boolean {
-  return right === 'pass' && left === 'pass';
+  const isPassOrNa = (v: string | undefined) => v === 'pass' || v === 'na';
+  return !!right && !!left && isPassOrNa(right) && isPassOrNa(left);
 }
 
 // ─── Progress indicator ───────────────────────────────────────────────────────
