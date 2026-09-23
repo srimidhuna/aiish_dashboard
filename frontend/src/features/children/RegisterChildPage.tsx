@@ -245,6 +245,43 @@ export default function RegisterChildPage() {
   const parentState = watch('parentState');
   const parentDistrict = watch('parentDistrict');
   const contactNumberValue = watch('contactNumber');
+  const birthOrderValue = watch('birthOrder');
+
+  // Store the previous state to only clear when state actually changes
+  const [prevVal, setPrevVal] = useState({ state: parentState });
+
+  useEffect(() => {
+    if (birthOrderValue && motherIdCheck.status === 'duplicate' && motherIdCheck.matches.length > 0 && !editId) {
+      const matchId = motherIdCheck.matches[0].id;
+      // Fetch details and populate
+      childrenService.getById(matchId).then((existingChild) => {
+        const fieldsToCopy: (keyof FormData)[] = [
+          'lastName', 'motherName', 'motherAadhaar', 'fatherName', 'contactNumber', 'whatsappNumber', 'phone2',
+          'address', 'taluk', 'pinCode', 'parentDistrict', 'parentState', 'region',
+          'socioEconomicStatus', 'educationLevel', 'educationLevelOther', 'religion', 'religionOther', 'deliveryType', 'noOfSiblings'
+        ];
+        fieldsToCopy.forEach(field => {
+          if (existingChild[field] !== undefined && existingChild[field] !== null) {
+            setValue(field, existingChild[field] as any, { shouldValidate: true, shouldDirty: true });
+            if (field === 'parentState') {
+              setPrevVal({ state: existingChild[field] as string });
+            }
+          }
+        });
+        if (existingChild.assessment) {
+          if (existingChild.assessment.familyHistoryHearingLoss !== undefined && existingChild.assessment.familyHistoryHearingLoss !== null) {
+            setValue('familyHistoryHearingLoss', existingChild.assessment.familyHistoryHearingLoss, { shouldValidate: true, shouldDirty: true });
+          }
+          if (existingChild.assessment.consanguinityDegree !== undefined && existingChild.assessment.consanguinityDegree !== null) {
+            setValue('consanguinityDegree', existingChild.assessment.consanguinityDegree, { shouldValidate: true, shouldDirty: true });
+          }
+        }
+        toast.success("Demographic details auto-filled from existing sibling record.");
+      }).catch(err => {
+        console.error("Failed to fetch sibling details", err);
+      });
+    }
+  }, [birthOrderValue, motherIdCheck.status, motherIdCheck.matches, setValue, editId]);
 
   // WhatsApp option: 'same' | 'not_available' | 'custom'
   const [whatsappOption, setWhatsappOption] = useState<'same' | 'not_available' | 'custom'>('custom');
@@ -255,9 +292,6 @@ export default function RegisterChildPage() {
       setValue('whatsappNumber', contactNumberValue || '', { shouldValidate: true });
     }
   }, [contactNumberValue, whatsappOption, setValue]);
-
-  // Store the previous state to only clear when state actually changes
-  const [prevVal, setPrevVal] = useState({ state: parentState });
 
   useEffect(() => {
     if (parentState !== prevVal.state) {

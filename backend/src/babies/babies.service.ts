@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateBabyDto } from '@/babies/dto/create-baby.dto';
@@ -110,6 +110,24 @@ export class BabiesService {
 
   async create(dto: CreateBabyDto, createdById: string) {
     const { riskFactorIds, assessment, ...babyData } = dto;
+
+    // Prevent identical duplicates
+    const existing = await this.prisma.baby.findFirst({
+      where: {
+        hospitalId: babyData.hospitalId,
+        uniqueMotherId: babyData.uniqueMotherId || null,
+        firstName: babyData.firstName || null,
+        lastName: babyData.lastName || null,
+        dob: new Date(dto.dob),
+        gender: babyData.gender,
+        birthOrder: babyData.birthOrder || null,
+        deletedAt: null,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('A child record with these exact details already exists.');
+    }
 
     const baby = await this.prisma.baby.create({
       data: {
