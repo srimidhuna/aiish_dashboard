@@ -659,11 +659,7 @@ export default function RegisterChildPage() {
       return;
     }
 
-    // HRR step (step 3): remarks is mandatory when HRR(1)
-    if (currentStep === 3 && hrrFindings === 'hrr' && !getValues('hrrRemarks')?.trim()) {
-      toast.error('HRR Remarks is required when HRR findings is HRR (1).');
-      return;
-    }
+    // HRR Remarks is optional even when HRR (1) is selected
 
     // HRR step (step 3): craniofacial remarks mandatory when craniofacial is selected
     if (currentStep === 3 && craniofacialSelected && !getValues('craniofacialRemarks')?.trim()) {
@@ -1411,22 +1407,14 @@ export default function RegisterChildPage() {
               <div className="col-span-6 mt-2">
                 <label className="text-sm font-medium">
                   HRR Remarks
-                  {hrrFindings === 'hrr' && <span className="text-red-500 ml-1">*</span>}
-                  {hrrFindings === 'no_hrr' && <span className="text-muted-foreground text-xs ml-1">(optional)</span>}
+                  <span className="text-muted-foreground text-xs ml-1">(optional)</span>
                 </label>
                 <textarea
                   {...register('hrrRemarks')}
                   rows={2}
-                  placeholder={hrrFindings === 'hrr' ? 'Required — describe the HRR findings...' : 'Enter any remarks about the HRR findings...'}
-                  className={`mt-1 flex w-full rounded-md border px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent ${
-                    hrrFindings === 'hrr' && !hrrRemarksValue?.trim()
-                      ? 'border-red-400 focus:ring-red-400'
-                      : 'border-input'
-                  }`}
+                  placeholder="Enter any remarks about the HRR findings..."
+                  className="mt-1 flex w-full rounded-md border border-input px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent"
                 />
-                {hrrFindings === 'hrr' && !hrrRemarksValue?.trim() && (
-                  <p className="text-xs text-red-500 mt-1">Remarks is required when HRR findings is HRR (1).</p>
-                )}
               </div>
 
             </FormSection>

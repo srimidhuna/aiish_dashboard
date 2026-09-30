@@ -10,5 +10,5 @@ http.get('http://localhost:3001/api/v1/masters/risk-categories', (res) => {
     console.log('Body:', data);
   });
 }).on('error', (err) => {
-  console.error('Error:', err.message);
+  console.error('Error:', err);
 });
