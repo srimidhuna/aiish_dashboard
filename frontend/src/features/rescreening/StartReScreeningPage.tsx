@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { screeningsService, childrenService, followUpsService, mastersService, staffService } from '../../services/api';
 import { useForm } from 'react-hook-form';
+import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../../components/ui/Button';
 import { TestHeader } from '../../components/forms/TestHeader';
 import { RiskFactorChecklist } from '../../components/forms/RiskFactorChecklist';
@@ -29,7 +30,7 @@ export default function StartReScreeningPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { register, handleSubmit, watch, formState: { isSubmitting } } = useForm<ReScreeningFormData>({
+  const { register, handleSubmit, watch, setValue, getValues, formState: { isSubmitting } } = useForm<ReScreeningFormData>({
     defaultValues: {
       aabr2Right: '',
       aabr2Left: '',
@@ -38,6 +39,8 @@ export default function StartReScreeningPage() {
       followUpNotes: 'Re-Screening failed. Diagnostic Evaluation Required.',
     }
   });
+
+  const { user } = useAuth();
 
   const { data: screening, isLoading: isScreeningLoading } = useQuery({
     queryKey: ['screenings', id],
@@ -72,6 +75,18 @@ export default function StartReScreeningPage() {
     queryKey: ['staff'],
     queryFn: () => staffService.list(),
   });
+
+  useEffect(() => {
+    if (user && staffList.length > 0) {
+      const currentTestedBy = getValues('testedBy');
+      if (!currentTestedBy) {
+        const staffRec = staffList.find(s => s.email === user.email);
+        if (staffRec) {
+          setValue('testedBy', staffRec.id, { shouldValidate: true });
+        }
+      }
+    }
+  }, [user, staffList, getValues, setValue]);
 
   const mutation = useMutation({
     mutationFn: async (data: ReScreeningFormData) => {

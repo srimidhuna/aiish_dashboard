@@ -26,7 +26,7 @@ export interface CreateStaffPayload {
   gender: string;
   dateOfBirth?: string;
   mobileNumber?: string;
-  email?: string;
+  email: string;
   photoUrl?: string;
   role?: string;
   designation?: string;
@@ -34,7 +34,10 @@ export interface CreateStaffPayload {
   qualification?: string;
   licenseNumber?: string;
   yearsOfExperience?: number;
-  hospitalId?: string;
+  /** Required — used to create the staff member's login account */
+  hospitalId: string;
+  /** Sent to backend for bcrypt hashing — never stored in plain text */
+  password: string;
 }
 
 export const staffService = {

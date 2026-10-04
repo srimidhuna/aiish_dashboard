@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { CreateHospitalDto } from '@/masters/dto/create-hospital.dto';
 import { UpdateHospitalDto } from '@/masters/dto/update-hospital.dto';
 import { HospitalQueryDto } from '@/masters/dto/hospital-query.dto';
 import { CreateStaffDto } from '@/masters/dto/create-staff.dto';
 
+const BCRYPT_ROUNDS = 12;
+
 @Injectable()
 export class MastersService {
+  private readonly logger = new Logger(MastersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Geography ────────────────────────────────────────────────────────────
@@ -154,13 +159,70 @@ export class MastersService {
   }
 
   async createStaff(dto: CreateStaffDto) {
-    const { dateOfBirth, ...rest } = dto;
-    return this.prisma.staff.create({
-      data: {
-        ...rest,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-      },
+    const { dateOfBirth, password, ...rest } = dto;
+
+    // Check for duplicate email across both Staff and User tables, and duplicate employeeId
+    const [existingStaff, existingUser, existingEmployee] = await Promise.all([
+      this.prisma.staff.findFirst({ where: { email: dto.email } }),
+      this.prisma.user.findFirst({ where: { email: dto.email, deletedAt: null } }),
+      this.prisma.staff.findUnique({ where: { employeeId: dto.employeeId } }),
+    ]);
+    if (existingStaff || existingUser) {
+      throw new ConflictException(
+        `A staff member or user account with email "${dto.email}" already exists.`,
+      );
+    }
+    if (existingEmployee) {
+      throw new ConflictException(
+        `A staff member with Employee ID "${dto.employeeId}" already exists.`,
+      );
+    }
+
+    // Map staff role string to a valid UserRole enum value
+    const userRoleMap: Record<string, UserRole> = {
+      audiologist: UserRole.audiologist,
+      doctor: UserRole.doctor,
+    };
+    const userRole: UserRole = userRoleMap[dto.role] ?? UserRole.audiologist;
+
+    // Hash password — never store plain text
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+    // Require hospitalId for User (User.hospitalId is non-nullable in the schema)
+    const hospitalId = dto.hospitalId;
+    if (!hospitalId) {
+      throw new BadRequestException(
+        'hospitalId is required when registering a staff member so a login account can be created.',
+      );
+    }
+
+    // Execute both inserts in a transaction
+    const [staff] = await this.prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: {
+          email: dto.email,
+          passwordHash,
+          fullName: dto.fullName,
+          hospitalId,
+          role: userRole,
+        },
+      });
+
+      const newStaff = await tx.staff.create({
+        data: {
+          ...rest,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+        },
+      });
+
+      this.logger.log(
+        `Staff registered: employeeId=${newStaff.employeeId}, userId=${newUser.id}, role=${userRole}`,
+      );
+
+      return [newStaff, newUser] as const;
     });
+
+    return staff;
   }
 
   async deleteStaff(id: string) {

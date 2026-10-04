@@ -323,6 +323,19 @@ export default function RegisterChildPage() {
     queryFn: () => staffService.list(),
   });
 
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!editId && user && staffList.length > 0) {
+      const currentAssessingStaff = getValues('assessingStaffId');
+      if (!currentAssessingStaff) {
+        const staffRec = staffList.find(s => s.email === user.email);
+        if (staffRec) {
+          setValue('assessingStaffId', staffRec.id, { shouldValidate: true });
+        }
+      }
+    }
+  }, [editId, user, staffList, getValues, setValue]);
+
   const { data: riskCategories = [] } = useQuery({
     queryKey: ['risk-categories'],
     queryFn: () => mastersService.listRiskCategories(),

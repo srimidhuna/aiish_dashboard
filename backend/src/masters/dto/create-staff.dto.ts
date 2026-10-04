@@ -8,6 +8,7 @@ import {
   IsInt,
   Min,
   Max,
+  MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -85,4 +86,14 @@ export class CreateStaffDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiProperty({
+    example: 'StrongP@ss1',
+    description: 'Login password for the staff member (min 8 characters). Stored as a bcrypt hash — never plain text.',
+    minLength: 8,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8, { message: 'password must be at least 8 characters' })
+  password!: string;
 }

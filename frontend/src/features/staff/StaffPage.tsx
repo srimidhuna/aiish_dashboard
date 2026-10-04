@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { staffService } from '../../services/api/staffService';
 import type { StaffMember } from '../../services/api/staffService';
+import { hospitalsService } from '../../services/api/hospitalsService';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { toast } from 'sonner';
@@ -24,6 +25,9 @@ import {
   Clock,
   FileText,
   Trash2,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -52,6 +56,16 @@ const schema = z.object({
   yearsOfExperience: z.coerce.number({ invalid_type_error: 'Required' }).min(0, 'Cannot be negative').max(60),
   photoUrl: z.string().optional(),
   address: z.string().optional(),
+  hospitalId: z.string().min(1, 'Assigned hospital is required'),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Must contain an uppercase letter')
+    .regex(/[0-9]/, 'Must contain a number'),
+  confirmPassword: z.string().min(1, 'Please confirm the password'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
 });
 
 type FormData = z.infer<typeof schema>;
@@ -148,6 +162,13 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
   const queryClient = useQueryClient();
   const photoRef = useRef<HTMLInputElement>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const { data: hospitals = [] } = useQuery({
+    queryKey: ['hospitals'],
+    queryFn: () => hospitalsService.list(),
+  });
 
   const {
     register,
@@ -164,9 +185,14 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
       toast.success('Staff registered successfully!');
       reset();
       setPhotoPreview(null);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
       onClose();
     },
-    onError: () => toast.error('Failed to register staff.'),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to register staff.';
+      toast.error(msg);
+    },
   });
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,7 +211,12 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
     reader.readAsDataURL(file);
   };
 
-  const onSubmit = (data: FormData) => mutation.mutate(data);
+  const onSubmit = (data: FormData) => {
+    // Strip confirmPassword before sending to the API
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { confirmPassword: _confirm, ...payload } = data;
+    mutation.mutate(payload);
+  };
 
   if (!open) return null;
 
@@ -284,10 +315,77 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
                   <Input type="email" {...register('email')} placeholder="staff@aiish.gov.in" className={cn('mt-1', errors.email && 'border-destructive')} />
                 </LabeledField>
 
+                <LabeledField label="Assigned Hospital" error={errors.hospitalId?.message} className="col-span-2">
+                  <select
+                    {...register('hospitalId')}
+                    className={cn(
+                      'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1',
+                      errors.hospitalId && 'border-destructive',
+                    )}
+                  >
+                    <option value="">-- Select Hospital --</option>
+                    {hospitals.map((h) => (
+                      <option key={h.id} value={h.id}>{h.name}</option>
+                    ))}
+                  </select>
+                </LabeledField>
+
                 <LabeledField label="Residential Address" error={errors.address?.message} className="col-span-2">
                   <Input {...register('address')} placeholder="e.g. 123 Main St, City, State" className={cn('mt-1', errors.address && 'border-destructive')} />
                 </LabeledField>
               </div>
+            </div>
+
+            {/* ── Section: Account Credentials ── */}
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 pb-1 border-b flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5 text-violet-400" />
+                Account Credentials
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <LabeledField label="Password" error={errors.password?.message}>
+                  <div className="relative mt-1">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      {...register('password')}
+                      placeholder="Min. 8 chars, 1 uppercase, 1 number"
+                      className={cn('pr-10', errors.password && 'border-destructive')}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((p) => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </LabeledField>
+
+                <LabeledField label="Confirm Password" error={errors.confirmPassword?.message}>
+                  <div className="relative mt-1">
+                    <Input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      {...register('confirmPassword')}
+                      placeholder="Re-enter password"
+                      className={cn('pr-10', errors.confirmPassword && 'border-destructive')}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((p) => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                      tabIndex={-1}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </LabeledField>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                The staff member will use their registered email + this password to log in.
+              </p>
             </div>
 
             {/* ── Section: Professional Details ── */}
