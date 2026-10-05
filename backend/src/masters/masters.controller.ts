@@ -24,6 +24,7 @@ import { CreateHospitalDto } from '@/masters/dto/create-hospital.dto';
 import { UpdateHospitalDto } from '@/masters/dto/update-hospital.dto';
 import { HospitalQueryDto } from '@/masters/dto/hospital-query.dto';
 import { CreateStaffDto } from '@/masters/dto/create-staff.dto';
+import { UpdateStaffDto } from '@/masters/dto/update-staff.dto';
 
 @ApiTags('masters')
 @ApiCookieAuth('access_token')
@@ -125,6 +126,15 @@ export class MastersController {
   @ApiOkResponse({ description: 'Created staff member' })
   createStaff(@Body() dto: CreateStaffDto) {
     return this.mastersService.createStaff(dto);
+  }
+
+  @Patch('staff/:id')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Update a staff member (admin only)' })
+  @ApiOkResponse({ description: 'Updated staff member' })
+  updateStaff(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
+    return this.mastersService.updateStaff(id, dto);
   }
 
   @Delete('staff/:id')

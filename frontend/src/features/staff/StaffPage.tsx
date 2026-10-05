@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -39,7 +39,9 @@ const ROLE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
-const schema = z.object({
+import { Pencil } from 'lucide-react';
+
+const baseSchema = z.object({
   employeeId: z.string().min(1, 'Employee ID is required'),
   fullName: z.string().min(2, 'Full name is required'),
   gender: z.enum(['male', 'female', 'other']),
@@ -57,6 +59,9 @@ const schema = z.object({
   photoUrl: z.string().optional(),
   address: z.string().optional(),
   hospitalId: z.string().min(1, 'Assigned hospital is required'),
+});
+
+const createSchema = baseSchema.extend({
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -68,7 +73,23 @@ const schema = z.object({
   path: ['confirmPassword'],
 });
 
-type FormData = z.infer<typeof schema>;
+const editSchema = baseSchema.extend({
+  password: z.string().optional(),
+  confirmPassword: z.string().optional(),
+}).refine((data) => {
+  if (data.password && data.password.length > 0) {
+    if (data.password.length < 8) return false;
+    if (!/[A-Z]/.test(data.password)) return false;
+    if (!/[0-9]/.test(data.password)) return false;
+    return data.password === data.confirmPassword;
+  }
+  return true;
+}, {
+  message: 'Invalid password or passwords do not match',
+  path: ['confirmPassword'],
+});
+
+type FormData = z.infer<typeof createSchema>; // Use createSchema to type the form (includes all fields)
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -158,7 +179,7 @@ function LabeledField({
   );
 }
 
-function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function StaffRegistrationModal({ open, onClose, staffToEdit }: { open: boolean; onClose: () => void; staffToEdit?: StaffMember | null }) {
   const queryClient = useQueryClient();
   const photoRef = useRef<HTMLInputElement>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -170,27 +191,76 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
     queryFn: () => hospitalsService.list(),
   });
 
+  const isEdit = !!staffToEdit;
+  const currentSchema = isEdit ? editSchema : createSchema;
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
     setValue,
-  } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { gender: 'male' } });
+  } = useForm<FormData>({ 
+    resolver: zodResolver(currentSchema), 
+    defaultValues: { gender: 'male' } 
+  });
 
-  const mutation = useMutation({
+  useEffect(() => {
+    if (open) {
+      if (staffToEdit) {
+        reset({
+          employeeId: staffToEdit.employeeId || '',
+          fullName: staffToEdit.fullName || '',
+          gender: (staffToEdit.gender as any) || 'male',
+          dateOfBirth: staffToEdit.dateOfBirth ? new Date(staffToEdit.dateOfBirth).toISOString().split('T')[0] : '',
+          mobileNumber: staffToEdit.mobileNumber || '',
+          email: staffToEdit.email || '',
+          role: (staffToEdit.role as any) || '',
+          designation: staffToEdit.designation || '',
+          department: staffToEdit.department || '',
+          qualification: staffToEdit.qualification || '',
+          licenseNumber: staffToEdit.licenseNumber || '',
+          yearsOfExperience: staffToEdit.yearsOfExperience || 0,
+          photoUrl: staffToEdit.photoUrl || '',
+          address: (staffToEdit as any).address || '', // using any as address is not in StaffMember explicitly but could be added
+          hospitalId: staffToEdit.hospitalId || '',
+          password: '',
+          confirmPassword: '',
+        });
+        setPhotoPreview(staffToEdit.photoUrl || null);
+      } else {
+        reset({
+          employeeId: '', fullName: '', gender: 'male', dateOfBirth: '', mobileNumber: '', email: '', role: 'other' as any,
+          designation: '', department: '', qualification: '', licenseNumber: '', yearsOfExperience: 0,
+          photoUrl: '', address: '', hospitalId: '', password: '', confirmPassword: ''
+        });
+        setPhotoPreview(null);
+      }
+    }
+  }, [open, staffToEdit, reset]);
+
+  const createMutation = useMutation({
     mutationFn: staffService.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       toast.success('Staff registered successfully!');
-      reset();
-      setPhotoPreview(null);
-      setShowPassword(false);
-      setShowConfirmPassword(false);
       onClose();
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Failed to register staff.';
+      toast.error(msg);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { id: string; payload: any }) => staffService.update(data.id, data.payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      toast.success('Staff updated successfully!');
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Failed to update staff.';
       toast.error(msg);
     },
   });
@@ -212,10 +282,16 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
   };
 
   const onSubmit = (data: FormData) => {
-    // Strip confirmPassword before sending to the API
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmPassword: _confirm, ...payload } = data;
-    mutation.mutate(payload);
+    if (isEdit) {
+      if (!payload.password) {
+        delete (payload as any).password;
+      }
+      updateMutation.mutate({ id: staffToEdit!.id, payload });
+    } else {
+      createMutation.mutate(payload as any);
+    }
   };
 
   if (!open) return null;
@@ -237,7 +313,7 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
               <UserPlus className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Register Staff</h2>
+              <h2 className="text-lg font-bold text-white">{isEdit ? 'Edit Staff' : 'Register Staff'}</h2>
               <p className="text-xs text-white/60">All fields marked * are mandatory</p>
             </div>
           </div>
@@ -383,9 +459,16 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
                   </div>
                 </LabeledField>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                The staff member will use their registered email + this password to log in.
-              </p>
+              {isEdit && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Leave password fields blank if you do not want to change the password.
+                </p>
+              )}
+              {!isEdit && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  The staff member will use their registered email + this password to log in.
+                </p>
+              )}
             </div>
 
             {/* ── Section: Professional Details ── */}
@@ -447,10 +530,10 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
             <Button
               type="submit"
               className="flex-1 font-semibold"
-              disabled={mutation.isPending}
+              disabled={createMutation.isPending || updateMutation.isPending}
               style={{ background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)', border: 'none', color: 'white' }}
             >
-              {mutation.isPending ? 'Registering...' : 'Register Staff'}
+              {(createMutation.isPending || updateMutation.isPending) ? 'Saving...' : (isEdit ? 'Save Changes' : 'Register Staff')}
             </Button>
           </div>
         </form>
@@ -464,8 +547,19 @@ function StaffRegistrationModal({ open, onClose }: { open: boolean; onClose: () 
 export default function StaffPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [staffToEdit, setStaffToEdit] = useState<StaffMember | null>(null);
   const [search, setSearch] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleOpenEdit = (staff: StaffMember) => {
+    setStaffToEdit(staff);
+    setModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setTimeout(() => setStaffToEdit(null), 300); // delay reset so modal closes gracefully
+  };
 
   const { data: staffList = [], isLoading } = useQuery({
     queryKey: ['staff'],
@@ -515,7 +609,7 @@ export default function StaffPage() {
           </div>
         </div>
         <Button
-          onClick={() => setModalOpen(true)}
+          onClick={() => { setStaffToEdit(null); setModalOpen(true); }}
           className="flex items-center gap-2 font-semibold"
           style={{ background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)', border: 'none', color: 'white' }}
         >
@@ -584,13 +678,22 @@ export default function StaffPage() {
                   </div>
                 </div>
                 {staff.status !== 'deleted' && (
-                  <button
-                    onClick={() => setDeleteConfirmId(staff.id)}
-                    className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Remove staff member"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      onClick={() => handleOpenEdit(staff)}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      title="Edit staff member"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(staff.id)}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      title="Remove staff member"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -678,7 +781,7 @@ export default function StaffPage() {
         </div>
       )}
 
-      <StaffRegistrationModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <StaffRegistrationModal open={modalOpen} onClose={handleCloseModal} staffToEdit={staffToEdit} />
     </div>
   );
 }

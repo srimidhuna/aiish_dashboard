@@ -40,6 +40,8 @@ export interface CreateStaffPayload {
   password: string;
 }
 
+export interface UpdateStaffPayload extends Partial<CreateStaffPayload> {}
+
 export const staffService = {
   list: async (hospitalId?: string): Promise<StaffMember[]> => {
     const { data } = await apiClient.get<StaffMember[]>('/masters/staff', {
@@ -50,6 +52,11 @@ export const staffService = {
 
   create: async (payload: CreateStaffPayload): Promise<StaffMember> => {
     const { data } = await apiClient.post<StaffMember>('/masters/staff', payload);
+    return data;
+  },
+
+  update: async (id: string, payload: UpdateStaffPayload): Promise<StaffMember> => {
+    const { data } = await apiClient.patch<StaffMember>(`/masters/staff/${id}`, payload);
     return data;
   },
 

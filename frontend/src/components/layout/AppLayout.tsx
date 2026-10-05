@@ -8,11 +8,9 @@ import {
   LayoutDashboard,
   Hospital,
   Moon,
-  Bell,
   ChevronLeft,
   UserPlus,
   Users,
-  Maximize2,
   Repeat,
   LogOut,
 } from 'lucide-react';
@@ -166,16 +164,6 @@ export function AppLayout() {
               <Moon className="h-4 w-4" />
             </button>
 
-            {/* Bell */}
-            <button className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-[#1e1145]" />
-            </button>
-
-            {/* Fullscreen */}
-            <button className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors">
-              <Maximize2 className="h-4 w-4" />
-            </button>
 
             {/* Divider */}
             <div className="h-8 w-px bg-white/10" />

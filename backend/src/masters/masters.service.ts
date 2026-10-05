@@ -6,6 +6,7 @@ import { CreateHospitalDto } from '@/masters/dto/create-hospital.dto';
 import { UpdateHospitalDto } from '@/masters/dto/update-hospital.dto';
 import { HospitalQueryDto } from '@/masters/dto/hospital-query.dto';
 import { CreateStaffDto } from '@/masters/dto/create-staff.dto';
+import { UpdateStaffDto } from '@/masters/dto/update-staff.dto';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -220,6 +221,54 @@ export class MastersService {
       );
 
       return [newStaff, newUser] as const;
+    });
+
+    return staff;
+  }
+
+  async updateStaff(id: string, dto: UpdateStaffDto) {
+    const existing = await this.prisma.staff.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Staff member not found');
+
+    const { dateOfBirth, email, password, ...rest } = dto;
+    
+    // We will update both the Staff table and optionally the User table (if email is changing and user was found by original email/staff logic).
+    // The easiest way is to find the corresponding user. Here we can match by email since the staff usually shares email with user.
+    // However, if email is updated, we need to update the User table as well.
+    let userToUpdate = null;
+    if (existing.email) {
+       userToUpdate = await this.prisma.user.findUnique({ where: { email: existing.email } });
+    }
+
+    let passwordHash: string | undefined;
+    if (password) {
+      passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    }
+
+    const [staff] = await this.prisma.$transaction(async (tx) => {
+      const updatedStaff = await tx.staff.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(dateOfBirth ? { dateOfBirth: new Date(dateOfBirth) } : {}),
+          ...(email ? { email } : {}),
+        },
+      });
+
+      // if email or role changed, sync to user table
+      if (userToUpdate && (email || rest.role || rest.fullName || passwordHash)) {
+        await tx.user.update({
+          where: { id: userToUpdate.id },
+          data: {
+            ...(email ? { email } : {}),
+            ...(rest.fullName ? { fullName: rest.fullName } : {}),
+            ...(passwordHash ? { passwordHash } : {}),
+            // if role changed, we could update it too, but omitting for now to prevent breaking enums unless needed.
+          }
+        });
+      }
+
+      return [updatedStaff];
     });
 
     return staff;
