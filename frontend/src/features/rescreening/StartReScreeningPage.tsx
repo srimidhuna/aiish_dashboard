@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { screeningsService, childrenService, followUpsService, mastersService, staffService } from '../../services/api';
@@ -30,7 +31,7 @@ export default function StartReScreeningPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { register, handleSubmit, watch, setValue, getValues, formState: { isSubmitting } } = useForm<ReScreeningFormData>({
+  const { register, handleSubmit, watch, setValue, getValues } = useForm<ReScreeningFormData>({
     defaultValues: {
       aabr2Right: '',
       aabr2Left: '',

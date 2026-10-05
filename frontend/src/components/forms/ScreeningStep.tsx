@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { FormSection } from './FormSection';
 import { EarResultSelector } from './EarResultSelector';
@@ -120,15 +120,29 @@ export function ScreeningStep({
     }
   }, [allFailed, followUpDate, setFollowUpDate]);
 
-  // Clear downstream fields when a higher test passes (prevents stale data)
+  // Clear downstream fields ONLY when visibility transitions from shown→hidden.
+  // Using previous-value refs ensures we never clear on initial render (false→false)
+  // or when data loads in edit mode (false→true), only when user explicitly changes selection (true→false).
+  const prevShowTeoae = useRef(showTeoae);
+  const prevShowDpoae = useRef(showDpoae);
+  const prevShowAabr1 = useRef(showAabr1);
+
   useEffect(() => {
-    if (!showTeoae) { setValue('teoaeRight', undefined); setValue('teoaeLeft', undefined); }
+    const wasShown = prevShowTeoae.current;
+    prevShowTeoae.current = showTeoae;
+    if (wasShown && !showTeoae) { setValue('teoaeRight', undefined); setValue('teoaeLeft', undefined); }
   }, [showTeoae, setValue]);
+
   useEffect(() => {
-    if (!showDpoae) { setValue('dpoaeRight', undefined); setValue('dpoaeLeft', undefined); }
+    const wasShown = prevShowDpoae.current;
+    prevShowDpoae.current = showDpoae;
+    if (wasShown && !showDpoae) { setValue('dpoaeRight', undefined); setValue('dpoaeLeft', undefined); }
   }, [showDpoae, setValue]);
+
   useEffect(() => {
-    if (!showAabr1) { setValue('aabr1Right', undefined); setValue('aabr1Left', undefined); }
+    const wasShown = prevShowAabr1.current;
+    prevShowAabr1.current = showAabr1;
+    if (wasShown && !showAabr1) { setValue('aabr1Right', undefined); setValue('aabr1Left', undefined); }
   }, [showAabr1, setValue]);
 
   // Auto-fill N/A for AABR if one ear passed and the other referred in OAE

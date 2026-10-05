@@ -6,13 +6,10 @@ import { staffDashboardService } from '../../services/api/staffDashboardService'
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useTheme } from '../../components/ThemeProvider';
 import {
-  UserPlus,
-  Repeat,
   Baby,
   AlertTriangle,
   Activity,
   Clock,
-  CheckCircle2,
   ArrowRight,
 } from 'lucide-react';
 
@@ -173,12 +170,7 @@ export default function StaffDashboardPage() {
     );
   }
 
-  const today = new Date().toLocaleDateString('en-IN', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+
 
   return (
     <div className="space-y-6">

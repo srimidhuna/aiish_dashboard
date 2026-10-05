@@ -3,9 +3,9 @@ export type FollowUpStatus =
   'scheduled' | 'completed' | 'missed' | 'lost_to_followup' | 'rescheduled';
 export type Role = 'admin' | 'audiologist' | 'doctor';
 export type ScreeningStatus = 'draft' | 'scheduled' | 'completed';
-export type TestResult = 'pass' | 'refer' | 'noisy' | 'cnt' | 'not_done';
+export type TestResult = 'pass' | 'refer' | 'noisy' | 'cnt' | 'not_done' | 'na';
 export type PassRefer = 'pass' | 'refer';
-export type ReflexResult = 'normal' | 'abnormal';
+export type ReflexResult = 'normal' | 'abnormal' | 'cnt';
 export type ConsanguinityDegree = 'first' | 'second' | 'third';
 export type FollowUpType = 'phone' | 'regular' | 'not_applicable';
 export type Region = 'urban' | 'rural';
@@ -77,7 +77,7 @@ export interface RecommendationType {
   label: string;
 }
 
-export type ReflexResult = 'normal' | 'abnormal' | 'cnt';
+// (ReflexResult now includes 'cnt' — see line 8 above)
 
 export interface AudiologistAssessment {
   familyHistoryHearingLoss?: boolean;

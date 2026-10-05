@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return storedUser ? JSON.parse(storedUser) : null;
   });
   const [nbsCentre, setNbsCentre] = useState(() => localStorage.getItem('nbs_centre') || '');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, _setIsLoading] = useState(false);
 
   const login = async (email: string, pass: string, nbsCentreVal?: string) => {
     const res = await authService.login(email, pass);

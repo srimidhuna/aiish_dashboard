@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { followUpsService, childrenService } from '../../services/api';
-import type { FollowUp } from '../../types';
+import { followUpsService, childrenService, screeningsService } from '../../services/api';
+import type { FollowUp, Screening } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 import { FollowUpDialog } from './FollowUpDialog';
 import { ChildDetailsDialog } from './ChildDetailsDialog';
@@ -13,7 +14,8 @@ import { StatusBadge } from '../../components/shared/StatusBadge';
 import { EmptyState } from '../../components/shared/EmptyState';
 
 export default function FollowUpsPage() {
-  const [activeTab, setActiveTab] = useState<'Upcoming' | 'Completed' | 'Missed' | 'Message' | 'Call'>(
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'Upcoming' | 'Completed' | 'Missed' | 'Message' | 'Call' | 'Re-Screening'>(
     'Upcoming',
   );
   
@@ -38,6 +40,11 @@ export default function FollowUpsPage() {
     queryFn: () => childrenService.list(),
   });
 
+  const { data: rescreenings, isLoading: isLoadingRescreenings } = useQuery({
+    queryKey: ['screenings', 'rescreening', 'scheduled'],
+    queryFn: () => screeningsService.list({ type: 'rescreening', status: 'scheduled' }),
+  });
+
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: FollowUp['status'] }) =>
       followUpsService.updateStatus(id, status),
@@ -51,7 +58,7 @@ export default function FollowUpsPage() {
 
 
 
-  if (isLoading) {
+  if (isLoading || isLoadingRescreenings) {
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
         <h1 className="text-3xl font-bold tracking-tight">Follow-ups Management</h1>
@@ -220,10 +227,10 @@ export default function FollowUpsPage() {
       <div className="flex flex-col sm:flex-row justify-between gap-4 items-end sm:items-center">
         <div className="border-b flex-grow w-full">
           <nav className="-mb-px flex space-x-8 overflow-x-auto">
-            {['Upcoming', 'Completed', 'Missed', 'Message', 'Call'].map((tab) => (
+            {(['Upcoming', 'Completed', 'Missed', 'Message', 'Call', 'Re-Screening'] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab as any)}
+                onClick={() => setActiveTab(tab)}
                 className={`
                   whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm transition-colors
                   ${
@@ -233,7 +240,16 @@ export default function FollowUpsPage() {
                   }
                 `}
               >
-                {tab}
+                {tab === 'Re-Screening' ? (
+                  <span className="flex items-center gap-1.5">
+                    Re-Screening
+                    {rescreenings && rescreenings.length > 0 && (
+                      <span className="inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold w-4 h-4">
+                        {rescreenings.length}
+                      </span>
+                    )}
+                  </span>
+                ) : tab}
               </button>
             ))}
           </nav>
@@ -269,7 +285,74 @@ export default function FollowUpsPage() {
       </div>
 
       <div className="bg-card rounded-md border">
-        {filteredFollowUps?.length === 0 ? (
+        {activeTab === 'Re-Screening' ? (
+          // ── Re-Screening tab ─────────────────────────────────────────────────
+          rescreenings && rescreenings.length > 0 ? (
+            <div className="w-full overflow-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/50 border-b">
+                  <tr>
+                    <th className="px-6 py-3 font-medium">Due Date</th>
+                    <th className="px-6 py-3 font-medium">Patient</th>
+                    <th className="px-6 py-3 font-medium">Mother's Name</th>
+                    <th className="px-6 py-3 font-medium">Phone Number</th>
+                    <th className="px-6 py-3 font-medium">WhatsApp</th>
+                    <th className="px-6 py-3 font-medium">Hospital Number</th>
+                    <th className="px-6 py-3 font-medium">Status</th>
+                    <th className="px-6 py-3 font-medium text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rescreenings.map((s: Screening) => {
+                    const child = getChild(s.childId);
+                    return (
+                      <tr key={s.id} className="border-b hover:bg-muted/50">
+                        <td className="px-6 py-4 font-medium whitespace-nowrap">
+                          {s.dueDate ? new Date(s.dueDate).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => {
+                              if (child) {
+                                setSelectedChildForDetails(child);
+                                setChildDetailsOpen(true);
+                              }
+                            }}
+                            className="text-primary hover:underline font-medium text-left"
+                          >
+                            {child ? `${child.firstName} ${child.lastName}` : 'Unknown Child'}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">{child?.motherName || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {child?.contactNumber || child?.phone2 || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {child?.whatsappNumber || '-'}
+                        </td>
+                        <td className="px-6 py-4">{child?.hospitalNumber || '-'}</td>
+                        <td className="px-6 py-4">
+                          <StatusBadge kind="screeningStatus" value={s.status} />
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => navigate(`/rescreening/start/${s.id}`)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          >
+                            Start Re-Screening
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No patients scheduled for re-screening" />
+          )
+        ) : filteredFollowUps?.length === 0 ? (
           <EmptyState title={`No ${activeTab.toLowerCase()} follow-ups${filterRange !== 'all' ? ' for this period' : ''}`} />
         ) : (
           <div className="w-full overflow-auto">

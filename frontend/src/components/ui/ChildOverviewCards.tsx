@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle, CardContent } from './Card';
+import { Card } from './Card';
 import { Child, Hospital } from '../../types';
 
 interface ChildOverviewCardsProps {
@@ -6,7 +6,7 @@ interface ChildOverviewCardsProps {
   hospital?: Hospital;
 }
 
-export function ChildOverviewCards({ child, hospital }: ChildOverviewCardsProps) {
+export function ChildOverviewCards({ child }: ChildOverviewCardsProps) {
   return (
     <Card className="overflow-hidden">
       <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x border-b">

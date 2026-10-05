@@ -235,7 +235,7 @@ export default function RegisterChildPage() {
   const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
   const consanguinityDegree = watch('consanguinityDegree');
   const caregiverConcernValue = watch('caregiverConcern');
-  const hrrRemarksValue = watch('hrrRemarks');
+
   const craniofacialRemarksValue = watch('craniofacialRemarks');
 
 
@@ -261,10 +261,11 @@ export default function RegisterChildPage() {
           'socioEconomicStatus', 'educationLevel', 'educationLevelOther', 'religion', 'religionOther', 'deliveryType', 'noOfSiblings'
         ];
         fieldsToCopy.forEach(field => {
-          if (existingChild[field] !== undefined && existingChild[field] !== null) {
-            setValue(field, existingChild[field] as any, { shouldValidate: true, shouldDirty: true });
+          const val = (existingChild as unknown as Record<string, unknown>)[field];
+          if (val !== undefined && val !== null) {
+            setValue(field, val as any, { shouldValidate: true, shouldDirty: true });
             if (field === 'parentState') {
-              setPrevVal({ state: existingChild[field] as string });
+              setPrevVal({ state: val as string });
             }
           }
         });
@@ -429,16 +430,25 @@ export default function RegisterChildPage() {
     enabled: !!editId,
   });
 
-  const { data: editScreenings } = useQuery({
+  const { data: editScreenings, isLoading: isEditScreeningsLoading } = useQuery({
     queryKey: ['screenings', editId],
     queryFn: () => screeningsService.getByChildId(editId!),
     enabled: !!editId,
   });
 
   useEffect(() => {
-    if (editChild) {
-      const latestScreening = editScreenings?.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
-      reset({
+    // Wait for BOTH child data AND screening data before resetting.
+    // Resetting with undefined screenings causes a premature reset (screening fields → '')
+    // which updates prevShow* refs in ScreeningStep, leading to a false-positive clear trigger
+    // when the real screening data arrives.
+    if (!editChild) return;
+    if (editId && isEditScreeningsLoading) return; // screenings query still in flight
+
+    const initialScreening = editScreenings
+      ?.filter((s) => s.type === 'initial')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
+
+    reset({
         ...editChild,
         dateOfBirth: editChild.dateOfBirth?.split('T')[0] ?? '',
         hospitalOfBirthId: editChild.hospitalOfBirthId,
@@ -457,15 +467,21 @@ export default function RegisterChildPage() {
         reflexPlantar: editChild.assessment?.reflexPlantar,
         reflexSucking: editChild.assessment?.reflexSucking,
         remarks: editChild.remarks,
-        entFindings: latestScreening?.entFindings ?? '',
-        boaResult: latestScreening?.boaResult ?? '',
-        teoaeRight: latestScreening?.teoaeRight ?? '',
-        teoaeLeft: latestScreening?.teoaeLeft ?? '',
-        dpoaeRight: latestScreening?.dpoaeRight ?? '',
-        dpoaeLeft: latestScreening?.dpoaeLeft ?? '',
-        aabr1Right: latestScreening?.aabr1Right ?? '',
-        aabr1Left: latestScreening?.aabr1Left ?? '',
-        overallResult: latestScreening?.overallResult ?? '',
+        entFindings: initialScreening?.entFindings ?? '',
+        boaResult: initialScreening?.boaResult ?? '',
+        // Infer which OAE test was used from whichever result is stored
+        oaeTestSelection: initialScreening?.teoaeRight || initialScreening?.teoaeLeft
+          ? 'TEOAE'
+          : initialScreening?.dpoaeRight || initialScreening?.dpoaeLeft
+          ? 'DPOAE'
+          : undefined,
+        teoaeRight: initialScreening?.teoaeRight ?? '',
+        teoaeLeft: initialScreening?.teoaeLeft ?? '',
+        dpoaeRight: initialScreening?.dpoaeRight ?? '',
+        dpoaeLeft: initialScreening?.dpoaeLeft ?? '',
+        aabr1Right: initialScreening?.aabr1Right ?? '',
+        aabr1Left: initialScreening?.aabr1Left ?? '',
+        overallResult: initialScreening?.overallResult ?? '',
         educationLevelOther: editChild.educationLevelOther ?? '',
         religionOther: editChild.religionOther ?? '',
       } as any);
@@ -476,8 +492,7 @@ export default function RegisterChildPage() {
           audiologistId: editChild.assessingStaffId,
         });
       }
-    }
-  }, [editChild, editScreenings, reset]);
+  }, [editChild, editScreenings, isEditScreeningsLoading, editId, reset]);
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -531,8 +546,8 @@ export default function RegisterChildPage() {
 
       const payload = {
         ...cleanRest,
-        birthWeightGrams: toInt(cleanRest.birthWeightGrams),
-        gestationalAgeWeeks: toInt(cleanRest.gestationalAgeWeeks),
+        birthWeightGrams: toInt((cleanRest as Record<string, unknown>).birthWeightGrams),
+        gestationalAgeWeeks: toInt((cleanRest as Record<string, unknown>).gestationalAgeWeeks),
         noOfSiblings: toInt(cleanRest.noOfSiblings),
         // Snapshot assessing staff details so they survive deletion
         assessingStaffEmployeeId: selectedStaff?.employeeId,
@@ -712,7 +727,7 @@ export default function RegisterChildPage() {
   // or we can just render STEPS as is and it shows 'Screening' but we skip it.
   // To avoid confusion, let's keep STEPS but maybe show "Skip"
 
-  if (isEditLoading) {
+  if (isEditLoading || (editId && isEditScreeningsLoading)) {
     return <div className="p-8 text-center">Loading...</div>;
   }
 
@@ -1493,8 +1508,8 @@ export default function RegisterChildPage() {
             );
             const reflexLabel = (val?: string) =>
               ({ normal: 'Normal', abnormal: 'Abnormal', cnt: 'CNT' } as Record<string, string>)[val ?? ''] ?? val;
-            const earLabel = (val?: string) =>
-              ({ pass: 'Pass', refer: 'Refer', noisy: 'Noisy', cnt: 'CNT', not_done: 'Not Done' } as Record<string, string>)[val ?? ''] ?? val;
+            const earLabel = (val?: string | null) =>
+              ({ pass: 'Pass', refer: 'Refer', noisy: 'Noisy', cnt: 'CNT', not_done: 'Not Done' } as Record<string, string>)[val ?? ''] ?? val ?? '—';
             return (
               <div className="space-y-1">
                 {/* Banner */}

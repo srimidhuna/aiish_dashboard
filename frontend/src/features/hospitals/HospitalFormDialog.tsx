@@ -77,7 +77,7 @@ export function HospitalFormDialog({ isOpen, onClose, hospital }: HospitalFormDi
     queryFn: () => districtsService.listByState(state),
     enabled: !!state,
   });
-  const { data: audiologists } = useQuery({
+  const { data: _audiologists } = useQuery({
     queryKey: ['audiologists', hospital?.id],
     queryFn: () => audiologistsService.list(hospital!.id),
     enabled: !!hospital,

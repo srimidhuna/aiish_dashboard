@@ -63,24 +63,8 @@ export default function ChildDetailsPage() {
     },
   });
 
-  const deleteChild = useMutation({
-    mutationFn: () => childrenService.delete(id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['children'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
-      toast.success('Child record deleted successfully.');
-      navigate('/children');
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Failed to delete child record.');
-    },
-  });
 
-  const handleDeleteChild = () => {
-    if (window.confirm(`Permanently delete ${child?.firstName} ${child?.lastName}'s record? This action cannot be undone.`)) {
-      deleteChild.mutate();
-    }
-  };
+
 
   const { data: hospital } = useQuery({
     queryKey: ['hospital', child?.hospitalOfBirthId],
