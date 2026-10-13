@@ -25,6 +25,7 @@ export class CreateScreeningDto {
   @ApiPropertyOptional() @IsOptional() @IsString() assignedAudiologistId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() entFindings?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() cntReason?: string;
 
   @ApiPropertyOptional({ enum: TEST_RESULT }) @IsOptional() @IsIn(TEST_RESULT) boaResult?: string;
 

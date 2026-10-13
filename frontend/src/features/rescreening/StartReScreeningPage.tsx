@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { TestHeader } from '../../components/forms/TestHeader';
 import { RiskFactorChecklist } from '../../components/forms/RiskFactorChecklist';
 import { EarResultSelector } from '../../components/forms/EarResultSelector';
+import { CntReasonSelector } from '../../components/forms/CntReasonSelector';
 import { ChildOverviewCards } from '../../components/ui/ChildOverviewCards';
 import { PatientSummaryCard } from '../../components/ui/PatientSummaryCard';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ interface ReScreeningFormData {
   recommendationTypeIds?: string[];
   recommendationOther?: string;
   testedBy?: string;
+  cntReason?: string;
 }
 
 export default function StartReScreeningPage() {
@@ -100,6 +102,7 @@ export default function StartReScreeningPage() {
         aabr2Right: data.aabr2Right as any,
         aabr2Left: data.aabr2Left as any,
         overallResult: isPass ? 'pass' : 'refer',
+        cntReason: data.cntReason || undefined,
       });
 
       if (!isPass && data.scheduleFollowUp && data.followUpDate) {
@@ -293,6 +296,13 @@ export default function StartReScreeningPage() {
                               </span>
                             </div>
                           )}
+                          
+                          {s.cntReason && (
+                            <div className="flex justify-between py-1 border-t border-border/50 text-amber-700 dark:text-amber-400 font-medium">
+                              <span>CNT Reason:</span>
+                              <span>{s.cntReason}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                   ))}
@@ -336,6 +346,15 @@ export default function StartReScreeningPage() {
             </div>
           </div>
         </div>
+
+        {/* ── CNT Reason (if any re-screening test is marked CNT) ── */}
+        <input type="hidden" {...register('cntReason')} />
+        {(aabr2R === 'cnt' || aabr2L === 'cnt') && (
+          <CntReasonSelector
+            value={watch('cntReason')}
+            onChange={(val) => setValue('cntReason', val)}
+          />
+        )}
 
         {isRefer && (
           <div className="rounded-xl border border-red-200 bg-red-50/30 p-6 space-y-4 animate-in fade-in slide-in-from-top-2">

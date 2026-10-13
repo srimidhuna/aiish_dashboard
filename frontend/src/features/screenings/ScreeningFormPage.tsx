@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { PatientSummaryCard } from '../../components/ui/PatientSummaryCard';
 import { EarResultSelector } from '../../components/forms/EarResultSelector';
 import { FormSection } from '../../components/forms/FormSection';
+import { CntReasonSelector } from '../../components/forms/CntReasonSelector';
 import { Skeleton } from '../../components/ui/Skeleton';
 
 const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done', 'na']);
@@ -19,6 +20,7 @@ const passReferOnly = z.enum(['pass', 'refer', 'cnt', 'not_done', 'na']);
 
 const schema = z.object({
   entFindings: z.string().optional(),
+  cntReason: z.string().optional(),
   boaResult: passReferOnly.optional(),
   teoaeRight: testResult.optional(),
   teoaeLeft: testResult.optional(),
@@ -105,6 +107,7 @@ export default function ScreeningFormPage() {
         aabr2Left: draft.aabr2Left as any,
         overallResult: draft.overallResult,
         remarks: draft.remarks,
+        cntReason: draft.cntReason,
       });
     }
   }, [draft, reset]);
@@ -267,6 +270,29 @@ export default function ScreeningFormPage() {
             </FormSection>
           </CardContent>
         </Card>
+
+        {/* ── CNT Reason (shown whenever any test is marked CNT) ── */}
+        <input type="hidden" {...register('cntReason')} />
+        {[
+          watch('boaResult'),
+          watch('teoaeRight'),
+          watch('teoaeLeft'),
+          watch('dpoaeRight'),
+          watch('dpoaeLeft'),
+          watch('aabr1Right'),
+          watch('aabr1Left'),
+          watch('aabr2Right'),
+          watch('aabr2Left'),
+        ].some((v) => v === 'cnt') && (
+          <Card className="border-amber-300/80 bg-amber-50/30 dark:bg-amber-950/20">
+            <CardContent className="pt-6">
+              <CntReasonSelector
+                value={watch('cntReason')}
+                onChange={(val) => setValue('cntReason', val, { shouldDirty: true, shouldValidate: true })}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

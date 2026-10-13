@@ -178,6 +178,11 @@ export default function ChildDetailsPage() {
                         <p className="text-sm text-muted-foreground mt-1">
                           {s.remarks || 'No remarks'}
                         </p>
+                        {s.cntReason && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+                            <span>CNT Reason: {s.cntReason}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="mt-2 md:mt-0 flex items-center">
                         <StatusBadge kind="screeningResult" value={s.overallResult ?? 'pending'} />

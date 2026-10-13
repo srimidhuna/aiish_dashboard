@@ -97,6 +97,7 @@ const schema = z.object({
   reflexSucking: z.enum(['normal', 'abnormal', 'cnt']).optional(),
 
   entFindings: z.string().optional(),
+  cntReason: z.string().optional(),
   boaResult: passReferOnly.nullish().or(z.literal('')),
   oaeTestSelection: z.enum(['TEOAE', 'DPOAE']).nullish().or(z.literal('')),
   teoaeRight: testResult.nullish().or(z.literal('')),
@@ -475,6 +476,7 @@ export default function RegisterChildPage() {
       reflexSucking: editChild.assessment?.reflexSucking,
       remarks: editChild.remarks,
       entFindings: initialScreening?.entFindings ?? '',
+      cntReason: initialScreening?.cntReason ?? '',
       boaResult: initialScreening?.boaResult ?? '',
       // Infer which OAE test was used from whichever result is stored
       oaeTestSelection: initialScreening?.teoaeRight || initialScreening?.teoaeLeft
@@ -515,6 +517,7 @@ export default function RegisterChildPage() {
           reflexPlantar,
           reflexSucking,
           entFindings,
+          cntReason,
           boaResult,
           teoaeRight,
           teoaeLeft,
@@ -591,6 +594,7 @@ export default function RegisterChildPage() {
               type: 'initial',
               status: 'completed' as const,
               entFindings: entFindings || undefined,
+              cntReason: cntReason || undefined,
               boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
               teoaeRight: teoaeRight || undefined,
               teoaeLeft: teoaeLeft || undefined,
@@ -636,6 +640,7 @@ export default function RegisterChildPage() {
             type: 'initial',
             status: 'completed',
             entFindings: entFindings || undefined,
+            cntReason: cntReason || undefined,
             boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
             teoaeRight: teoaeRight || undefined,
             teoaeLeft: teoaeLeft || undefined,
@@ -1677,6 +1682,7 @@ export default function RegisterChildPage() {
                   <Row label="AABR 1st — Left Ear" value={earLabel(v.aabr1Left)} />
                   <Row label="AABR 2nd — Right Ear" value={earLabel(v.aabr2Right)} />
                   <Row label="AABR 2nd — Left Ear" value={earLabel(v.aabr2Left)} />
+                  <Row label="CNT Reason" value={v.cntReason} />
                   <div className="flex py-1.5">
                     <span className="w-56 shrink-0 text-xs font-medium text-muted-foreground">Overall Result</span>
                     <span className={cn(

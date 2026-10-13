@@ -3,6 +3,7 @@ import type { UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-
 import { FormSection } from './FormSection';
 import { EarResultSelector } from './EarResultSelector';
 import { TestHeader } from './TestHeader';
+import { CntReasonSelector } from './CntReasonSelector';
 import { Calendar, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -101,6 +102,15 @@ export function ScreeningStep({
   const showAabr1     = hasHRR || oaeFailed;
   const aabr1Passed   = bothEarsPassed(aabr1R, aabr1L);
   const allFailed     = showAabr1 && anyEarFailed(aabr1R, aabr1L);
+
+  const hasCnt =
+    boa === 'cnt' ||
+    teoaeR === 'cnt' ||
+    teoaeL === 'cnt' ||
+    dpoaeR === 'cnt' ||
+    dpoaeL === 'cnt' ||
+    aabr1R === 'cnt' ||
+    aabr1L === 'cnt';
 
   // Auto-set overallResult from the cascade
   useEffect(() => {
@@ -315,6 +325,15 @@ export function ScreeningStep({
       )}
 
 
+
+      {/* ── CNT Reason (shown whenever any test is marked CNT) ── */}
+      <input type="hidden" {...register('cntReason')} />
+      {hasCnt && (
+        <CntReasonSelector
+          value={watch('cntReason')}
+          onChange={(val) => setValue('cntReason', val, { shouldDirty: true, shouldValidate: true })}
+        />
+      )}
 
       {/* ── Overall result (auto-set, read-only display) — only shown when tests have been entered ── */}
       {/* Hidden field always registered so form state is always valid regardless of BOA selection */}

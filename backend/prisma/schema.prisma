@@ -212,6 +212,7 @@ model Screening {
   id                    String               @id @default(uuid())
   babyId                String               @map("baby_id")
   entFindings           String?              @map("ent_findings")
+  cntReason             String?              @map("cnt_reason")
   teoaeRight            ScreeningTestResult? @map("teoae_right")
   teoaeLeft             ScreeningTestResult? @map("teoae_left")
   dpoaeRight            ScreeningTestResult? @map("dpoae_right")

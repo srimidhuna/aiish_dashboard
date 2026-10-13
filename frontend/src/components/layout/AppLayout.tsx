@@ -20,9 +20,9 @@ import { useState } from 'react';
 const ALL_NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: null },
   { label: 'Register Child', path: '/children/register', icon: UserPlus, roles: null },
-  { label: 'Data Repository', path: '/children', icon: Baby, roles: null },
   { label: 'Re-Screening', path: '/rescreening', icon: Repeat, roles: null },
   { label: 'Follow-ups', path: '/follow-ups', icon: Calendar, roles: ['admin'] },
+  { label: 'Data Repository', path: '/children', icon: Baby, roles: null },
   { label: 'Staff', path: '/staff', icon: Users, roles: ['admin'] },
   { label: 'Hospitals', path: '/hospitals', icon: Hospital, roles: ['admin'] },
   { label: 'Analytics', path: '/analytics', icon: BarChart3, roles: ['admin'] },

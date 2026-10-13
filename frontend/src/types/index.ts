@@ -171,6 +171,7 @@ export interface Screening {
   };
 
   entFindings?: string;
+  cntReason?: string;
   boaResult?: TestResult;
   teoaeRight?: TestResult;
   teoaeLeft?: TestResult;
