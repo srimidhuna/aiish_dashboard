@@ -45,6 +45,14 @@ export class BabiesController {
     return this.babiesService.list(query);
   }
 
+  @Get('next-pocd')
+  @ApiOperation({ summary: 'Get the approximate next POCD number' })
+  @ApiOkResponse({ description: '{ nextPocd: string }' })
+  async getNextPocdNumber() {
+    const nextPocd = await this.babiesService.getNextPocdNumber();
+    return { nextPocd };
+  }
+
   @Get('check-mother-id')
   @ApiOperation({ summary: 'Check if a uniqueMotherId already exists in the DB' })
   @ApiOkResponse({ description: '{ exists: boolean, matches: [...] }' })

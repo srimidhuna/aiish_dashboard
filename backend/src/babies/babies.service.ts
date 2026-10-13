@@ -29,6 +29,7 @@ export class BabiesService {
         { firstName: { contains: query.search, mode: 'insensitive' } },
         { lastName: { contains: query.search, mode: 'insensitive' } },
         { mrNumber: { contains: query.search, mode: 'insensitive' } },
+        { pocdNumber: { contains: query.search, mode: 'insensitive' } },
       ];
     }
     if (query.hospitalId) where.hospitalId = query.hospitalId;
@@ -108,6 +109,16 @@ export class BabiesService {
     return { exists: matches.length > 0, matches };
   }
 
+  async getNextPocdNumber() {
+    const currentYear = new Date().getFullYear();
+    const counter = await this.prisma.pocdCounter.findUnique({
+      where: { year: currentYear },
+    });
+    const nextCount = (counter?.count ?? 0) + 1;
+    const paddedCount = String(nextCount).padStart(4, '0');
+    return `${currentYear}${paddedCount}`;
+  }
+
   async create(dto: CreateBabyDto, createdById: string) {
     const { riskFactorIds, assessment, ...babyData } = dto;
 
@@ -129,19 +140,33 @@ export class BabiesService {
       throw new ConflictException('A child record with these exact details already exists.');
     }
 
-    const baby = await this.prisma.baby.create({
-      data: {
-        ...(babyData as Prisma.BabyUncheckedCreateInput),
-        dob: new Date(dto.dob),
-        createdById,
-        riskFactors: riskFactorIds?.length
-          ? { create: riskFactorIds.map((riskCategoryId) => ({ riskCategoryId })) }
-          : undefined,
-        assessment: assessment
-          ? { create: assessment as Prisma.AudiologistAssessmentUncheckedCreateWithoutBabyInput }
-          : undefined,
-      },
-      include: BABY_INCLUDE,
+    const currentYear = new Date().getFullYear();
+
+    const baby = await this.prisma.$transaction(async (tx) => {
+      const counter = await tx.pocdCounter.upsert({
+        where: { year: currentYear },
+        update: { count: { increment: 1 } },
+        create: { year: currentYear, count: 1 },
+      });
+
+      const paddedCount = String(counter.count).padStart(4, '0');
+      const generatedPocdNumber = `${currentYear}${paddedCount}`;
+
+      return tx.baby.create({
+        data: {
+          ...(babyData as Prisma.BabyUncheckedCreateInput),
+          pocdNumber: generatedPocdNumber,
+          dob: new Date(dto.dob),
+          createdById,
+          riskFactors: riskFactorIds?.length
+            ? { create: riskFactorIds.map((riskCategoryId) => ({ riskCategoryId })) }
+            : undefined,
+          assessment: assessment
+            ? { create: assessment as Prisma.AudiologistAssessmentUncheckedCreateWithoutBabyInput }
+            : undefined,
+        },
+        include: BABY_INCLUDE,
+      });
     });
 
     await this.prisma.patientTimeline.create({

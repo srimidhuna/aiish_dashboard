@@ -134,6 +134,9 @@ export default function ChildrenPage() {
       if (sortConfig.key === 'name') {
         aVal = `${a.firstName} ${a.lastName}`.toLowerCase();
         bVal = `${b.firstName} ${b.lastName}`.toLowerCase();
+      } else if (sortConfig.key === 'pocdNumber') {
+        aVal = (a.pocdNumber ?? '').toLowerCase();
+        bVal = (b.pocdNumber ?? '').toLowerCase();
       } else if (sortConfig.key === 'createdAt' || sortConfig.key === 'dateOfBirth') {
         aVal = new Date((a as any)[sortConfig.key]).getTime();
         bVal = new Date((b as any)[sortConfig.key]).getTime();
@@ -171,10 +174,11 @@ export default function ChildrenPage() {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const headers = ['Unique Mother ID', 'Baby Name', 'Gender', 'Age', "Mother's Name", 'Mobile Number', 'Overall Result'];
+    const headers = ['POCD Number', 'Unique Mother ID', 'Baby Name', 'Gender', 'Age', "Mother's Name", 'Mobile Number', 'Overall Result'];
     const rows = filtered.map((c) => {
       const s = getLatestScreening(c.id);
       return [
+        escape(c.pocdNumber ?? ''),
         escape(c.uniqueMotherId ?? ''),
         escape(`${c.firstName} ${c.lastName}`),
         escape(c.gender),
@@ -222,7 +226,7 @@ export default function ChildrenPage() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by name or hospital number..."
+              placeholder="Search by name, hospital number, or POCD number..."
               className="pl-9"
               value={search}
               onChange={(e) => updateSearch(e.target.value)}
@@ -310,6 +314,7 @@ export default function ChildrenPage() {
               <thead>
                 <tr className="border-b border-border bg-muted/40">
                   {[
+                    { key: 'pocdNumber', label: 'POCD Number', sortable: true },
                     { key: 'uniqueMotherId', label: 'Unique Mother ID', sortable: false },
                     { key: 'name', label: 'Baby Name', sortable: true },
                     { key: 'gender', label: 'Gender', sortable: false },
@@ -343,6 +348,13 @@ export default function ChildrenPage() {
                       onClick={() => navigate(`/children/${child.id}`)}
                       className="hover:bg-muted/50 cursor-pointer transition-colors group"
                     >
+                      {/* POCD Number */}
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs font-semibold text-foreground">
+                          {child.pocdNumber ?? <span className="italic text-muted-foreground/50">—</span>}
+                        </span>
+                      </td>
+
                       {/* Unique Mother ID */}
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs text-muted-foreground">

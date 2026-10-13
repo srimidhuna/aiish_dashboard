@@ -36,7 +36,7 @@ export function PatientSummaryCard({ child, latestScreening }: PatientSummaryCar
             {child.firstName} {child.lastName}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Hosp No: {child.hospitalNumber} &bull; {child.gender} &bull;{' '}
+            {child.pocdNumber ? `POCD: ${child.pocdNumber} • ` : ''}Hosp No: {child.hospitalNumber} &bull; {child.gender} &bull;{' '}
             {formatAge(child.dateOfBirth)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">

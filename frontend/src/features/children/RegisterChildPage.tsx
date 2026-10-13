@@ -139,6 +139,13 @@ const STEP_FIELDS: Record<number, (keyof FormData)[]> = {
 export default function RegisterChildPage() {
   const navigate = useNavigate();
   const { id: editId } = useParams();
+  
+  const { data: nextPocdData } = useQuery({
+    queryKey: ['nextPocdNumber'],
+    queryFn: () => childrenService.getNextPocdNumber(),
+    enabled: !editId,
+  });
+
   const queryClient = useQueryClient();
   const [currentStep, setCurrentStep] = useState(0);
   const [hrrFindings, setHrrFindings] = useState<'no_hrr' | 'hrr'>('no_hrr');
@@ -449,140 +456,185 @@ export default function RegisterChildPage() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
 
     reset({
-        ...editChild,
-        dateOfBirth: editChild.dateOfBirth?.split('T')[0] ?? '',
-        hospitalOfBirthId: editChild.hospitalOfBirthId,
-        districtId: editChild.districtId,
-        assessingStaffId: editChild.assessingStaffId,
-        riskFactorIds: editChild.riskFactorIds ?? [],
-        familyHistoryHearingLoss: editChild.assessment?.familyHistoryHearingLoss ?? false,
-        consanguinityDegree: editChild.assessment?.consanguinityDegree,
-        caregiverConcern: editChild.assessment?.caregiverConcern ?? false,
-        hrrRemarks: editChild.assessment?.hrrRemarks ?? '',
-        craniofacialRemarks: editChild.assessment?.craniofacialRemarks ?? '',
-        reflexMoro: editChild.assessment?.reflexMoro,
-        reflexRooting: editChild.assessment?.reflexRooting,
-        reflexBabinski: editChild.assessment?.reflexBabinski,
-        reflexPalmar: editChild.assessment?.reflexPalmar,
-        reflexPlantar: editChild.assessment?.reflexPlantar,
-        reflexSucking: editChild.assessment?.reflexSucking,
-        remarks: editChild.remarks,
-        entFindings: initialScreening?.entFindings ?? '',
-        boaResult: initialScreening?.boaResult ?? '',
-        // Infer which OAE test was used from whichever result is stored
-        oaeTestSelection: initialScreening?.teoaeRight || initialScreening?.teoaeLeft
-          ? 'TEOAE'
-          : initialScreening?.dpoaeRight || initialScreening?.dpoaeLeft
+      ...editChild,
+      dateOfBirth: editChild.dateOfBirth?.split('T')[0] ?? '',
+      hospitalOfBirthId: editChild.hospitalOfBirthId,
+      districtId: editChild.districtId,
+      assessingStaffId: editChild.assessingStaffId,
+      riskFactorIds: editChild.riskFactorIds ?? [],
+      familyHistoryHearingLoss: editChild.assessment?.familyHistoryHearingLoss ?? false,
+      consanguinityDegree: editChild.assessment?.consanguinityDegree,
+      caregiverConcern: editChild.assessment?.caregiverConcern ?? false,
+      hrrRemarks: editChild.assessment?.hrrRemarks ?? '',
+      craniofacialRemarks: editChild.assessment?.craniofacialRemarks ?? '',
+      reflexMoro: editChild.assessment?.reflexMoro,
+      reflexRooting: editChild.assessment?.reflexRooting,
+      reflexBabinski: editChild.assessment?.reflexBabinski,
+      reflexPalmar: editChild.assessment?.reflexPalmar,
+      reflexPlantar: editChild.assessment?.reflexPlantar,
+      reflexSucking: editChild.assessment?.reflexSucking,
+      remarks: editChild.remarks,
+      entFindings: initialScreening?.entFindings ?? '',
+      boaResult: initialScreening?.boaResult ?? '',
+      // Infer which OAE test was used from whichever result is stored
+      oaeTestSelection: initialScreening?.teoaeRight || initialScreening?.teoaeLeft
+        ? 'TEOAE'
+        : initialScreening?.dpoaeRight || initialScreening?.dpoaeLeft
           ? 'DPOAE'
           : undefined,
-        teoaeRight: initialScreening?.teoaeRight ?? '',
-        teoaeLeft: initialScreening?.teoaeLeft ?? '',
-        dpoaeRight: initialScreening?.dpoaeRight ?? '',
-        dpoaeLeft: initialScreening?.dpoaeLeft ?? '',
-        aabr1Right: initialScreening?.aabr1Right ?? '',
-        aabr1Left: initialScreening?.aabr1Left ?? '',
-        overallResult: initialScreening?.overallResult ?? '',
-        educationLevelOther: editChild.educationLevelOther ?? '',
-        religionOther: editChild.religionOther ?? '',
-      } as any);
-      if (editChild.hospitalOfBirthId) {
-        setLocation({
-          hospitalId: editChild.hospitalOfBirthId,
-          districtId: editChild.districtId,
-          audiologistId: editChild.assessingStaffId,
-        });
-      }
+      teoaeRight: initialScreening?.teoaeRight ?? '',
+      teoaeLeft: initialScreening?.teoaeLeft ?? '',
+      dpoaeRight: initialScreening?.dpoaeRight ?? '',
+      dpoaeLeft: initialScreening?.dpoaeLeft ?? '',
+      aabr1Right: initialScreening?.aabr1Right ?? '',
+      aabr1Left: initialScreening?.aabr1Left ?? '',
+      overallResult: initialScreening?.overallResult ?? '',
+      educationLevelOther: editChild.educationLevelOther ?? '',
+      religionOther: editChild.religionOther ?? '',
+    } as any);
+    if (editChild.hospitalOfBirthId) {
+      setLocation({
+        hospitalId: editChild.hospitalOfBirthId,
+        districtId: editChild.districtId,
+        audiologistId: editChild.assessingStaffId,
+      });
+    }
   }, [editChild, editScreenings, isEditScreeningsLoading, editId, reset]);
 
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
       try {
         const {
-        familyHistoryHearingLoss,
-        consanguinityDegree,
-        caregiverConcern,
-        reflexMoro,
-        reflexRooting,
-        reflexBabinski,
-        reflexPalmar,
-        reflexPlantar,
-        reflexSucking,
-        entFindings,
-        boaResult,
-        teoaeRight,
-        teoaeLeft,
-        dpoaeRight,
-        dpoaeLeft,
-        aabr1Right,
-        aabr1Left,
-        overallResult,
-        // Strip form-only fields that don't belong in the baby payload
-        audiologistId: _audiologistId,
-        guardianPhotoUrl: _guardianPhotoUrl,
-        oaeTestSelection: _oaeTestSelection,
-        ...rest
-      } = data;
+          familyHistoryHearingLoss,
+          consanguinityDegree,
+          caregiverConcern,
+          reflexMoro,
+          reflexRooting,
+          reflexBabinski,
+          reflexPalmar,
+          reflexPlantar,
+          reflexSucking,
+          entFindings,
+          boaResult,
+          teoaeRight,
+          teoaeLeft,
+          dpoaeRight,
+          dpoaeLeft,
+          aabr1Right,
+          aabr1Left,
+          overallResult,
+          // Strip form-only fields that don't belong in the baby payload
+          audiologistId: _audiologistId,
+          guardianPhotoUrl: _guardianPhotoUrl,
+          oaeTestSelection: _oaeTestSelection,
+          ...rest
+        } = data;
 
-      // Strip empty-string optional fields to avoid backend @IsIn / @IsEmail failures
-      const cleanRest = Object.fromEntries(
-        Object.entries(rest).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-      ) as typeof rest;
+        // Strip empty-string optional fields to avoid backend @IsIn / @IsEmail failures
+        const cleanRest = Object.fromEntries(
+          Object.entries(rest).filter(([, v]) => v !== '' && v !== undefined && v !== null)
+        ) as typeof rest;
 
-      // Coerce numeric fields — getValues() returns raw DOM strings, backend needs integers
-      const toInt = (v: unknown): number | undefined => {
-        const n = parseInt(String(v), 10);
-        return isNaN(n) ? undefined : n;
-      };
+        // Coerce numeric fields — getValues() returns raw DOM strings, backend needs integers
+        const toInt = (v: unknown): number | undefined => {
+          const n = parseInt(String(v), 10);
+          return isNaN(n) ? undefined : n;
+        };
 
-      // Resolve assessing staff snapshot — persisted even if staff is deleted later
-      const selectedStaff = cleanRest.assessingStaffId
-        ? staffList.find((s) => s.id === cleanRest.assessingStaffId)
-        : undefined;
+        // Resolve assessing staff snapshot — persisted even if staff is deleted later
+        const selectedStaff = cleanRest.assessingStaffId
+          ? staffList.find((s) => s.id === cleanRest.assessingStaffId)
+          : undefined;
 
-      // Validate followUpDate
-      if (overallResult === 'refer' && !followUpDate) {
-        throw new Error('Please schedule a Re-Screening visit date before submitting.');
-      }
+        // Validate followUpDate
+        if (overallResult === 'refer' && !followUpDate) {
+          throw new Error('Please schedule a Re-Screening visit date before submitting.');
+        }
 
-      const payload = {
-        ...cleanRest,
-        birthWeightGrams: toInt((cleanRest as Record<string, unknown>).birthWeightGrams),
-        gestationalAgeWeeks: toInt((cleanRest as Record<string, unknown>).gestationalAgeWeeks),
-        noOfSiblings: toInt(cleanRest.noOfSiblings),
-        // Snapshot assessing staff details so they survive deletion
-        assessingStaffEmployeeId: selectedStaff?.employeeId,
-        assessingStaffName: selectedStaff?.fullName,
-        // Strip empty-string enum values from assessment
-        assessment: Object.fromEntries(
-          Object.entries({
-            familyHistoryHearingLoss,
-            consanguinityDegree,
-            caregiverConcern,
-            hrrRemarks: data.hrrRemarks,
-            craniofacialRemarks: data.craniofacialRemarks,
-            reflexMoro,
-            reflexRooting,
-            reflexBabinski,
-            reflexPalmar,
-            reflexPlantar,
-            reflexSucking,
-          }).filter(([, v]) => (v as any) !== '' && v !== undefined && v !== null)
-        ) as Parameters<typeof childrenService.create>[0]['assessment'],
-      };
+        const payload = {
+          ...cleanRest,
+          birthWeightGrams: toInt((cleanRest as Record<string, unknown>).birthWeightGrams),
+          gestationalAgeWeeks: toInt((cleanRest as Record<string, unknown>).gestationalAgeWeeks),
+          noOfSiblings: toInt(cleanRest.noOfSiblings),
+          // Snapshot assessing staff details so they survive deletion
+          assessingStaffEmployeeId: selectedStaff?.employeeId,
+          assessingStaffName: selectedStaff?.fullName,
+          // Strip empty-string enum values from assessment
+          assessment: Object.fromEntries(
+            Object.entries({
+              familyHistoryHearingLoss,
+              consanguinityDegree,
+              caregiverConcern,
+              hrrRemarks: data.hrrRemarks,
+              craniofacialRemarks: data.craniofacialRemarks,
+              reflexMoro,
+              reflexRooting,
+              reflexBabinski,
+              reflexPalmar,
+              reflexPlantar,
+              reflexSucking,
+            }).filter(([, v]) => (v as any) !== '' && v !== undefined && v !== null)
+          ) as Parameters<typeof childrenService.create>[0]['assessment'],
+        };
 
-      const { screeningsService } = await import('../../services/api');
+        const { screeningsService } = await import('../../services/api');
 
-      if (editId) {
-        const updatedChild = await childrenService.update(editId, payload);
-        
+        if (editId) {
+          const updatedChild = await childrenService.update(editId, payload);
+
+          if (overallResult || boaResult || teoaeRight || aabr1Right) {
+            const childScreenings = await screeningsService.getByChildId(editId);
+            const existingScreening = childScreenings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+
+            const screeningData = {
+              childId: editId,
+              type: 'initial',
+              status: 'completed' as const,
+              entFindings: entFindings || undefined,
+              boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
+              teoaeRight: teoaeRight || undefined,
+              teoaeLeft: teoaeLeft || undefined,
+              dpoaeRight: dpoaeRight || undefined,
+              dpoaeLeft: dpoaeLeft || undefined,
+              aabr1Right: (aabr1Right || undefined) as any,
+              aabr1Left: (aabr1Left || undefined) as any,
+              overallResult: overallResult || undefined,
+              remarks: data.remarks || undefined,
+            } as Partial<Screening>;
+
+            if (existingScreening) {
+              const { childId, ...updateData } = screeningData;
+              await screeningsService.update(existingScreening.id, updateData);
+            } else {
+              await screeningsService.create(screeningData);
+            }
+          }
+
+          if (followUpDate) {
+            const childScreenings = await screeningsService.getByChildId(editId);
+            const rescreening = childScreenings.find((s: any) => s.type === 'rescreening');
+            if (rescreening) {
+              await screeningsService.update(rescreening.id, { dueDate: new Date(followUpDate).toISOString() });
+            } else {
+              await screeningsService.create({
+                childId: editId,
+                status: 'scheduled',
+                type: 'rescreening',
+                dueDate: new Date(followUpDate).toISOString(),
+                remarks: 'Scheduled for AABR - 2nd Screening',
+              });
+            }
+          }
+          return updatedChild;
+        }
+
+        const child = await childrenService.create(payload);
+
         if (overallResult || boaResult || teoaeRight || aabr1Right) {
-          const childScreenings = await screeningsService.getByChildId(editId);
-          const existingScreening = childScreenings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-          
-          const screeningData = {
-            childId: editId,
+          await screeningsService.create({
+            childId: child.id,
             type: 'initial',
-            status: 'completed' as const,
+            status: 'completed',
             entFindings: entFindings || undefined,
             boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
             teoaeRight: teoaeRight || undefined,
@@ -593,63 +645,18 @@ export default function RegisterChildPage() {
             aabr1Left: (aabr1Left || undefined) as any,
             overallResult: overallResult || undefined,
             remarks: data.remarks || undefined,
-          } as Partial<Screening>;
-
-          if (existingScreening) {
-            const { childId, ...updateData } = screeningData;
-            await screeningsService.update(existingScreening.id, updateData);
-          } else {
-            await screeningsService.create(screeningData);
-          }
+          } as Partial<Screening>);
         }
 
         if (followUpDate) {
-          const childScreenings = await screeningsService.getByChildId(editId);
-          const rescreening = childScreenings.find((s: any) => s.type === 'rescreening');
-          if (rescreening) {
-            await screeningsService.update(rescreening.id, { dueDate: new Date(followUpDate).toISOString() });
-          } else {
-            await screeningsService.create({
-              childId: editId,
-              status: 'scheduled',
-              type: 'rescreening',
-              dueDate: new Date(followUpDate).toISOString(),
-              remarks: 'Scheduled for AABR - 2nd Screening',
-            });
-          }
+          await screeningsService.create({
+            childId: child.id,
+            status: 'scheduled',
+            type: 'rescreening',
+            dueDate: new Date(followUpDate).toISOString(),
+            remarks: 'Scheduled for AABR - 2nd Screening',
+          });
         }
-        return updatedChild;
-      }
-
-      const child = await childrenService.create(payload);
-
-      if (overallResult || boaResult || teoaeRight || aabr1Right) {
-        await screeningsService.create({
-          childId: child.id,
-          type: 'initial',
-          status: 'completed',
-          entFindings: entFindings || undefined,
-          boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-          teoaeRight: teoaeRight || undefined,
-          teoaeLeft: teoaeLeft || undefined,
-          dpoaeRight: dpoaeRight || undefined,
-          dpoaeLeft: dpoaeLeft || undefined,
-          aabr1Right: (aabr1Right || undefined) as any,
-          aabr1Left: (aabr1Left || undefined) as any,
-          overallResult: overallResult || undefined,
-          remarks: data.remarks || undefined,
-        } as Partial<Screening>);
-      }
-
-      if (followUpDate) {
-        await screeningsService.create({
-          childId: child.id,
-          status: 'scheduled',
-          type: 'rescreening',
-          dueDate: new Date(followUpDate).toISOString(),
-          remarks: 'Scheduled for AABR - 2nd Screening',
-        });
-      }
 
         return child;
       } catch (err) {
@@ -659,7 +666,7 @@ export default function RegisterChildPage() {
     },
     onSuccess: async (data) => {
       if (followUpDate) {
-         queryClient.invalidateQueries({ queryKey: ['screenings'] });
+        queryClient.invalidateQueries({ queryKey: ['screenings'] });
       }
       queryClient.invalidateQueries({ queryKey: ['children'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
@@ -758,7 +765,20 @@ export default function RegisterChildPage() {
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">POCD Number</label>
-                <Input {...register('pocdNumber')} />
+                <Input
+                  {...register('pocdNumber')}
+                  readOnly
+                  disabled
+                  placeholder={!editId && nextPocdData ? `Approx: ${nextPocdData.nextPocd}` : ''}
+                  className="bg-muted/50 cursor-not-allowed"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {editId 
+                    ? 'Auto-generated at registration' 
+                    : nextPocdData 
+                      ? `Will be auto-generated on registration (approx: ${nextPocdData.nextPocd})` 
+                      : 'Will be auto-generated on registration'}
+                </p>
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">Unique Mother ID</label>
@@ -1228,11 +1248,11 @@ export default function RegisterChildPage() {
 
               <div className="col-span-3">
                 <label className="text-sm font-medium">Out Reach Service / NBS Centre</label>
-                <Input 
-                  {...register('nbsCentre')} 
-                  readOnly={!!nbsCentre} 
-                  className={nbsCentre ? "bg-muted cursor-not-allowed" : ""} 
-                  title={nbsCentre ? "Auto-filled from login" : "Enter NBS Centre"} 
+                <Input
+                  {...register('nbsCentre')}
+                  readOnly={!!nbsCentre}
+                  className={nbsCentre ? "bg-muted cursor-not-allowed" : ""}
+                  title={nbsCentre ? "Auto-filled from login" : "Enter NBS Centre"}
                 />
               </div>
 
@@ -1397,11 +1417,10 @@ export default function RegisterChildPage() {
                     {...register('craniofacialRemarks')}
                     rows={3}
                     placeholder="e.g. Microtia grade II, right ear — auricular malformation with partial canal atresia..."
-                    className={`mt-1 flex w-full rounded-md border px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent ${
-                      !craniofacialRemarksValue?.trim()
+                    className={`mt-1 flex w-full rounded-md border px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none bg-transparent ${!craniofacialRemarksValue?.trim()
                         ? 'border-red-400 focus:ring-red-400'
                         : 'border-input'
-                    }`}
+                      }`}
                   />
                   {!craniofacialRemarksValue?.trim() && (
                     <p className="text-xs text-red-500 mt-1">Please describe the craniofacial anomaly details.</p>
@@ -1736,7 +1755,7 @@ export default function RegisterChildPage() {
                     (d) => {
                       const demoFields = ['region', 'socioEconomicStatus', 'educationLevel', 'religion'];
                       const missingFields = demoFields.filter(f => !d[f as keyof FormData]);
-                      
+
                       if (missingFields.length > 0) {
                         const confirmMsg = "Some socio-demographic details are missing. Are you sure you want to submit without them?";
                         if (!window.confirm(confirmMsg)) {

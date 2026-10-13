@@ -446,3 +446,11 @@ enum TimelineEvent {
   closed
   other
 }
+
+model PocdCounter {
+  id    Int @id @default(autoincrement())
+  year  Int @unique
+  count Int @default(0)
+
+  @@map("pocd_counters")
+}

@@ -46,4 +46,8 @@ export const childrenService = {
     const { data } = await apiClient.get('/babies/check-mother-id', { params: { id, excludeId } });
     return data;
   },
+  getNextPocdNumber: async (): Promise<{ nextPocd: string }> => {
+    const { data } = await apiClient.get('/babies/next-pocd');
+    return data;
+  },
 };
