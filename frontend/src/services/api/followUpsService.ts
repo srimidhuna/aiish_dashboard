@@ -10,7 +10,51 @@ export interface FollowUpFilters {
   childId?: string;
 }
 
+export interface PhoneSurveillanceItem {
+  id: string; // baby id
+  mrNumber: string;
+  pocdNumber: string;
+  firstName: string;
+  lastName: string;
+  dob: string;
+  gender: string;
+  motherName: string;
+  fatherName: string;
+  contactNumber: string;
+  whatsappNumber: string;
+  phone2: string;
+  hospitalName: string;
+  district: string;
+  state: string;
+  riskFactors: string[];
+  screeningPassDate: string;
+  dueDate: string;
+  status: 'due' | 'upcoming' | 'completed';
+  isDue: boolean;
+  daysUntilDue: number;
+  followUpId?: string;
+  callStatus?: string;
+  callNotes?: string;
+  callDate?: string;
+}
+
+export interface LogPhoneCallPayload {
+  babyId: string;
+  status: 'completed' | 'rescheduled' | 'missed';
+  notes?: string;
+  callDate?: string;
+  nextSteps?: string;
+}
+
 export const followUpsService = {
+  getPhoneSurveillance: async (): Promise<PhoneSurveillanceItem[]> => {
+    const { data } = await apiClient.get('/follow-up/phone-surveillance');
+    return data;
+  },
+  logPhoneCall: async (payload: LogPhoneCallPayload): Promise<FollowUp> => {
+    const { data } = await apiClient.post('/follow-up/log-phone-call', payload);
+    return mapFollowUpRecord(data);
+  },
   list: async (filters: FollowUpFilters = {}): Promise<FollowUp[]> => {
     const { data } = await apiClient.get('/follow-up', { params: filters });
     return data.map(mapFollowUpRecord);

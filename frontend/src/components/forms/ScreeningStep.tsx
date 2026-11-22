@@ -1,27 +1,10 @@
-import { useEffect, useRef } from 'react';
 import type { UseFormRegister, UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { FormSection } from './FormSection';
 import { EarResultSelector } from './EarResultSelector';
 import { TestHeader } from './TestHeader';
 import { CntReasonSelector } from './CntReasonSelector';
 import { Calendar, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
-
-// ─── Helper ──────────────────────────────────────────────────────────────────
-/** Returns true when a result value is anything other than 'pass' or 'na' AND is actually set */
-function isFailed(val: string | undefined): boolean {
-  return !!val && val !== 'pass' && val !== 'na';
-}
-
-/** Returns true when AT LEAST ONE ear of a two-ear test has failed */
-function anyEarFailed(right: string | undefined, left: string | undefined): boolean {
-  return isFailed(right) || isFailed(left);
-}
-
-/** Returns true when BOTH ears of a two-ear test have passed or are not applicable */
-function bothEarsPassed(right: string | undefined, left: string | undefined): boolean {
-  const isPassOrNa = (v: string | undefined) => v === 'pass' || v === 'na';
-  return !!right && !!left && isPassOrNa(right) && isPassOrNa(left);
-}
+import { computeScreeningOutcome, hasHighRisk, todayLocalISO } from '../../lib/screeningLogic';
 
 // ─── Progress indicator ───────────────────────────────────────────────────────
 interface StepBadgeProps {
@@ -31,7 +14,8 @@ interface StepBadgeProps {
 function StepBadge({ label, status }: StepBadgeProps) {
   const styles: Record<string, string> = {
     pending: 'bg-muted text-muted-foreground border-border',
-    active: 'bg-indigo-50 text-indigo-700 border-indigo-300 font-semibold dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
+    active:
+      'bg-indigo-50 text-indigo-700 border-indigo-300 font-semibold dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800',
     pass: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800',
     fail: 'bg-red-50 text-red-600 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
     skipped: 'bg-muted/50 text-muted-foreground/50 border-dashed border-border',
@@ -42,13 +26,14 @@ function StepBadge({ label, status }: StepBadgeProps) {
     active: <ChevronRight className="h-3 w-3" />,
   };
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border ${styles[status]}`}>
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border ${styles[status]}`}
+    >
       {icons[status]}
       {label}
     </span>
   );
 }
-
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface ScreeningStepProps {
@@ -59,135 +44,81 @@ interface ScreeningStepProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setValue: UseFormSetValue<any>;
   followUpDate: string;
-  setFollowUpDate: (d: string) => void;
+  setFollowUpDate?: (date: string) => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function ScreeningStep({
-  register,
-  watch,
-  setValue,
-  followUpDate,
-  setFollowUpDate,
-}: ScreeningStepProps) {
-  const boa           = watch('boaResult')       as string | undefined;
+export function ScreeningStep({ register, watch, setValue, followUpDate, setFollowUpDate }: ScreeningStepProps) {
+  const boa = watch('boaResult') as string | undefined;
   const oaeTestSelection = watch('oaeTestSelection') as string | undefined;
-  const teoaeR        = watch('teoaeRight')      as string | undefined;
-  const teoaeL        = watch('teoaeLeft')       as string | undefined;
-  const dpoaeR        = watch('dpoaeRight')      as string | undefined;
-  const dpoaeL        = watch('dpoaeLeft')       as string | undefined;
-  const aabr1R        = watch('aabr1Right')      as string | undefined;
-  const aabr1L        = watch('aabr1Left')       as string | undefined;
+  const teoaeR = watch('teoaeRight') as string | undefined;
+  const teoaeL = watch('teoaeLeft') as string | undefined;
+  const dpoaeR = watch('dpoaeRight') as string | undefined;
+  const dpoaeL = watch('dpoaeLeft') as string | undefined;
+  const aabr1R = watch('aabr1Right') as string | undefined;
+  const aabr1L = watch('aabr1Left') as string | undefined;
+  const cntReason = watch('cntReason') as string | undefined;
 
-  // Cascade visibility rules
-  const showTeoae     = oaeTestSelection === 'TEOAE';
-  const showDpoae     = oaeTestSelection === 'DPOAE';
-  
-  const teoaePassed   = bothEarsPassed(teoaeR, teoaeL);
-  const dpoaePassed   = bothEarsPassed(dpoaeR, dpoaeL);
-  const oaePassed     = showTeoae ? teoaePassed : (showDpoae ? dpoaePassed : false);
-  const oaeFailed     = showTeoae ? anyEarFailed(teoaeR, teoaeL) : (showDpoae ? anyEarFailed(dpoaeR, dpoaeL) : false);
+  const highRisk = hasHighRisk({
+    riskFactorIds: watch('riskFactorIds'),
+    familyHistoryHearingLoss: watch('familyHistoryHearingLoss'),
+    consanguinityDegree: watch('consanguinityDegree'),
+    caregiverConcern: watch('caregiverConcern'),
+  });
 
-  const riskFactorIds = watch('riskFactorIds') as string[] | undefined;
-  const familyHistoryHearingLoss = watch('familyHistoryHearingLoss') as boolean | undefined;
-  const consanguinityDegree = watch('consanguinityDegree') as string | undefined;
-  const caregiverConcernValue = watch('caregiverConcern') as boolean | undefined;
-
-  const hasHRR =
-    (riskFactorIds && riskFactorIds.length > 0) ||
-    familyHistoryHearingLoss ||
-    (consanguinityDegree && consanguinityDegree !== 'none') ||
-    caregiverConcernValue;
-
-  const showAabr1     = hasHRR || oaeFailed;
-  const aabr1Passed   = bothEarsPassed(aabr1R, aabr1L);
-  const allFailed     = showAabr1 && anyEarFailed(aabr1R, aabr1L);
-
-  const hasCnt =
-    boa === 'cnt' ||
-    teoaeR === 'cnt' ||
-    teoaeL === 'cnt' ||
-    dpoaeR === 'cnt' ||
-    dpoaeL === 'cnt' ||
-    aabr1R === 'cnt' ||
-    aabr1L === 'cnt';
-
-  // Auto-set overallResult from the cascade
-  useEffect(() => {
-    if (oaePassed || aabr1Passed) {
-      setValue('overallResult', 'pass');
-    } else if (allFailed) {
-      setValue('overallResult', 'refer');
-    }
-  }, [oaePassed, aabr1Passed, allFailed, setValue]);
-
-  // Auto-schedule next-day rescreening when all tests fail
-  useEffect(() => {
-    if (allFailed && !followUpDate) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      setFollowUpDate(tomorrow.toISOString().split('T')[0]);
-    }
-  }, [allFailed, followUpDate, setFollowUpDate]);
-
-  // Clear downstream fields ONLY when visibility transitions from shown→hidden.
-  // Using previous-value refs ensures we never clear on initial render (false→false)
-  // or when data loads in edit mode (false→true), only when user explicitly changes selection (true→false).
-  const prevShowTeoae = useRef(showTeoae);
-  const prevShowDpoae = useRef(showDpoae);
-  const prevShowAabr1 = useRef(showAabr1);
-
-  useEffect(() => {
-    const wasShown = prevShowTeoae.current;
-    prevShowTeoae.current = showTeoae;
-    if (wasShown && !showTeoae) { setValue('teoaeRight', undefined); setValue('teoaeLeft', undefined); }
-  }, [showTeoae, setValue]);
-
-  useEffect(() => {
-    const wasShown = prevShowDpoae.current;
-    prevShowDpoae.current = showDpoae;
-    if (wasShown && !showDpoae) { setValue('dpoaeRight', undefined); setValue('dpoaeLeft', undefined); }
-  }, [showDpoae, setValue]);
-
-  useEffect(() => {
-    const wasShown = prevShowAabr1.current;
-    prevShowAabr1.current = showAabr1;
-    if (wasShown && !showAabr1) { setValue('aabr1Right', undefined); setValue('aabr1Left', undefined); }
-  }, [showAabr1, setValue]);
-
-  // Auto-fill N/A for AABR if one ear passed and the other referred in OAE
-  useEffect(() => {
-    const subscription = watch((value, { name }) => {
-      if (name === 'teoaeRight' || name === 'teoaeLeft') {
-        if (value.teoaeRight === 'pass' && value.teoaeLeft === 'refer') {
-          setValue('aabr1Right', 'na');
-        }
-        if (value.teoaeLeft === 'pass' && value.teoaeRight === 'refer') {
-          setValue('aabr1Left', 'na');
-        }
-      }
-      if (name === 'dpoaeRight' || name === 'dpoaeLeft') {
-        if (value.dpoaeRight === 'pass' && value.dpoaeLeft === 'refer') {
-          setValue('aabr1Right', 'na');
-        }
-        if (value.dpoaeLeft === 'pass' && value.dpoaeRight === 'refer') {
-          setValue('aabr1Left', 'na');
-        }
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, setValue]);
+  // All cascade state is derived from the shared rules. Keeping the form values in sync
+  // (clearing hidden sections, AABR N/A, overall result, re-screening date) is done by
+  // useScreeningCascade in the page, which stays mounted across steps.
+  const {
+    showTeoae,
+    showDpoae,
+    showAabr1,
+    oaePassed,
+    oaeFailed,
+    aabr1Passed,
+    aabr1Failed,
+    overallResult,
+    hasCnt,
+  } = computeScreeningOutcome(
+    {
+      boaResult: boa,
+      oaeTestSelection,
+      teoaeRight: teoaeR,
+      teoaeLeft: teoaeL,
+      dpoaeRight: dpoaeR,
+      dpoaeLeft: dpoaeL,
+      aabr1Right: aabr1R,
+      aabr1Left: aabr1L,
+    },
+    highRisk,
+  );
+  const teoaePassed = showTeoae && oaePassed;
+  const dpoaePassed = showDpoae && oaePassed;
 
   // Progress bar badges
-  const boaStatus   = !boa ? 'active' : boa === 'pass' ? 'pass' : 'fail';
-  const oaeStatus   = !oaeTestSelection ? 'active' : oaePassed ? 'pass' : oaeFailed ? 'fail' : 'active';
-  const aabr1Status = !showAabr1 ? 'skipped' : aabr1Passed ? 'pass' : (aabr1R || aabr1L) ? 'fail' : 'active';
+  const boaStatus = !boa ? 'active' : boa === 'pass' ? 'pass' : 'fail';
+  const oaeStatus = !oaeTestSelection
+    ? 'active'
+    : oaePassed
+      ? 'pass'
+      : oaeFailed
+        ? 'fail'
+        : 'active';
+  const aabr1Status = !showAabr1
+    ? 'skipped'
+    : aabr1Passed
+      ? 'pass'
+      : aabr1Failed
+        ? 'fail'
+        : 'active';
 
   return (
     <div className="space-y-5">
       {/* ── Progress strip ── */}
       <div className="rounded-xl bg-muted/50 border border-border px-4 py-3">
-        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Initial Screening Progress</p>
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Initial Screening Progress
+        </p>
         <div className="flex flex-wrap gap-2">
           <StepBadge label="BOA" status={boaStatus as StepBadgeProps['status']} />
           <span className="text-muted-foreground/50 self-center">→</span>
@@ -237,14 +168,27 @@ export function ScreeningStep({
           />
         </div>
         <div className="px-5 py-4">
-          <label className="text-sm font-medium mb-3 block">Choose the OAE test to perform: <span className="text-muted-foreground text-xs font-normal">(Optional)</span></label>
+          <label className="text-sm font-medium mb-3 block">
+            Choose the OAE test to perform:{' '}
+            <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
+          </label>
           <div className="flex gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" value="TEOAE" {...register('oaeTestSelection')} className="w-4 h-4 text-indigo-600 border-border" />
+              <input
+                type="radio"
+                value="TEOAE"
+                {...register('oaeTestSelection')}
+                className="w-4 h-4 text-indigo-600 border-border"
+              />
               <span className="text-sm font-medium">TEOAE</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" value="DPOAE" {...register('oaeTestSelection')} className="w-4 h-4 text-indigo-600 border-border" />
+              <input
+                type="radio"
+                value="DPOAE"
+                {...register('oaeTestSelection')}
+                className="w-4 h-4 text-indigo-600 border-border"
+              />
               <span className="text-sm font-medium">DPOAE</span>
             </label>
           </div>
@@ -258,7 +202,7 @@ export function ScreeningStep({
             <TestHeader
               step={3}
               title="TEOAE — Transient Evoked Otoacoustic Emissions"
-              status={!teoaeR && !teoaeL ? 'active' : teoaePassed ? 'pass' : 'fail'}
+              status={teoaePassed ? 'pass' : oaeFailed ? 'fail' : 'active'}
             />
           </div>
           <div className="px-5 py-4 grid grid-cols-6 gap-4">
@@ -272,14 +216,14 @@ export function ScreeningStep({
         </div>
       )}
 
-      {/* ── STEP 3: DPOAE (shown only when both TEOAE ears fail) ── */}
+      {/* ── STEP 3: DPOAE (shown only when DPOAE is selected) ── */}
       {showDpoae && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="px-5 py-3.5 border-b border-border/50">
             <TestHeader
               step={3}
               title="DPOAE — Distortion Product Otoacoustic Emissions"
-              status={!dpoaeR && !dpoaeL ? 'active' : dpoaePassed ? 'pass' : 'fail'}
+              status={dpoaePassed ? 'pass' : oaeFailed ? 'fail' : 'active'}
             />
           </div>
           <div className="px-5 py-4 grid grid-cols-6 gap-4">
@@ -293,14 +237,14 @@ export function ScreeningStep({
         </div>
       )}
 
-      {/* ── STEP 4: AABR 1st (shown only when both DPOAE ears fail) ── */}
+      {/* ── STEP 4: AABR 1st (shown for high-risk babies or when OAE fails) ── */}
       {showAabr1 && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="px-5 py-3.5 border-b border-border/50">
             <TestHeader
               step={4}
               title="AABR — 1st Screening"
-              status={!aabr1R && !aabr1L ? 'active' : aabr1Passed ? 'pass' : 'fail'}
+              status={aabr1Passed ? 'pass' : aabr1Failed ? 'fail' : 'active'}
             />
           </div>
           <div className="px-5 py-4 grid grid-cols-6 gap-4">
@@ -324,14 +268,14 @@ export function ScreeningStep({
         </div>
       )}
 
-
-
       {/* ── CNT Reason (shown whenever any test is marked CNT) ── */}
       <input type="hidden" {...register('cntReason')} />
       {hasCnt && (
         <CntReasonSelector
-          value={watch('cntReason')}
-          onChange={(val) => setValue('cntReason', val, { shouldDirty: true, shouldValidate: true })}
+          value={cntReason}
+          onChange={(val) =>
+            setValue('cntReason', val, { shouldDirty: true, shouldValidate: true })
+          }
         />
       )}
 
@@ -341,21 +285,45 @@ export function ScreeningStep({
 
       <div className="rounded-xl border border-border bg-card shadow-sm px-5 py-4">
         <p className="text-sm font-semibold text-foreground mb-2">Overall Screening Result</p>
-        {oaePassed || aabr1Passed ? (
+        {overallResult === 'pass' ? (
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">PASS</span>
           </div>
-        ) : allFailed ? (
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800">
+        ) : overallResult === 'refer' ? (
+          <div className="flex flex-col gap-3">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800 w-fit">
               <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-              <span className="text-sm font-bold text-red-700 dark:text-red-300">REFER — Re-Screening required</span>
+              <span className="text-sm font-bold text-red-700 dark:text-red-300">
+                REFER — Re-Screening required
+              </span>
             </div>
             {followUpDate && (
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800">
-                <Calendar className="h-4 w-4" />
-                Re-Screening: {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              <div className="flex items-center gap-3 flex-wrap p-3 rounded-lg bg-amber-50/80 border border-amber-200 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span>Re-Screening Date:</span>
+                </div>
+                {setFollowUpDate ? (
+                  <input
+                    type="date"
+                    min={todayLocalISO()}
+                    value={followUpDate}
+                    onChange={(e) => setFollowUpDate(e.target.value)}
+                    className="rounded-md border border-amber-300 bg-white dark:bg-zinc-900 px-2.5 py-1 text-sm font-semibold text-amber-900 dark:text-amber-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                ) : (
+                  <span className="font-semibold">
+                    {new Date(followUpDate).toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </span>
+                )}
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  (Default: next day — change if needed)
+                </span>
               </div>
             )}
           </div>
@@ -365,7 +333,6 @@ export function ScreeningStep({
           </div>
         )}
       </div>
-
     </div>
   );
 }

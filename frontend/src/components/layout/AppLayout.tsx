@@ -12,6 +12,7 @@ import {
   UserPlus,
   Users,
   Repeat,
+  PhoneCall,
   LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -22,6 +23,7 @@ const ALL_NAV_ITEMS = [
   { label: 'Register Child', path: '/children/register', icon: UserPlus, roles: null },
   { label: 'Re-Screening', path: '/rescreening', icon: Repeat, roles: null },
   { label: 'Follow-ups', path: '/follow-ups', icon: Calendar, roles: ['admin'] },
+  { label: 'Phone Follow-ups', path: '/phone-follow-ups', icon: PhoneCall, roles: null },
   { label: 'Data Repository', path: '/children', icon: Baby, roles: null },
   { label: 'Staff', path: '/staff', icon: Users, roles: ['admin'] },
   { label: 'Hospitals', path: '/hospitals', icon: Hospital, roles: ['admin'] },

@@ -57,4 +57,20 @@ export class AudiologistAssessmentDto {
   @IsOptional()
   @IsIn(REFLEX)
   reflexSucking?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  suckingLatchProperly?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  suckingBreathingDifficulty?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  suckingFeedDuration?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  suckingNasalRegurgitation?: string;
 }

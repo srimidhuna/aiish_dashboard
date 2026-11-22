@@ -1,7 +1,8 @@
 import { IsString, IsOptional, IsIn, IsDateString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-const TEST_RESULT = ['pass', 'refer', 'noisy', 'cnt', 'not_done'];
+// Must stay in sync with the Prisma ScreeningTestResult enum ('na' = AABR not applicable for an ear that passed OAE).
+const TEST_RESULT = ['pass', 'refer', 'noisy', 'cnt', 'not_done', 'na'];
 const PASS_REFER = ['pass', 'refer'];
 const STATUS = ['draft', 'scheduled', 'completed'];
 

@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screening } from '../../types';
-import { childrenService, mastersService, screeningsService } from '../../services/api';
+import { childrenService, hospitalsService, mastersService, screeningsService } from '../../services/api';
 import { staffService } from '../../services/api/staffService';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
@@ -22,23 +22,39 @@ import { cn } from '../../lib/utils';
 import { getDistrictsForState, getTaluksForDistrict, INDIA_STATES } from '../../lib/locationData';
 import { ScreeningStep } from '../../components/forms/ScreeningStep';
 import { useAuth } from '../../hooks/useAuth';
+import { useScreeningCascade } from '../../hooks/useScreeningCascade';
+import { computeScreeningOutcome, hasHighRisk, sanitizeScreening } from '../../lib/screeningLogic';
 
 const testResult = z.enum(['pass', 'refer', 'noisy', 'cnt', 'not_done']);
 const passReferOnly = z.enum(['pass', 'refer', 'cnt', 'not_done']);
+// AABR additionally allows N/A for an ear that already passed OAE.
+const aabrResult = z.enum(['pass', 'refer', 'cnt', 'not_done', 'na']);
+
+const todayLocalISO = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 const DRAFT_KEY = 'registration_draft';
+
+/** Optional enum that also accepts the '' an unselected <select> / null an unchecked radio group produces. */
+const optionalEnum = <T extends [string, ...string[]]>(values: T) => z.enum(values).nullish().or(z.literal(''));
 const schema = z.object({
-  hospitalNumber: z.string().min(1, 'Hospital number is required'),
+  hospitalNumber: z.string().trim().min(1, 'MR Records No. is required'),
   pocdNumber: z.string().optional(),
   uniqueMotherId: z.string().optional(),
   birthOrder: z.string().optional(),
 
   firstName: z.string().optional(),
   lastName: z.string().min(1, 'Last name is required'),
-  dateOfBirth: z.string().min(1, 'Required'),
+  dateOfBirth: z
+    .string()
+    .min(1, 'Required')
+    .refine((val) => !val || val <= todayLocalISO(), { message: 'Date of birth cannot be in the future' }),
   gender: z.enum(['male', 'female', 'other']),
 
-  motherName: z.string().min(1, 'Required'),
+  motherName: z.string().trim().min(1, 'Required'),
   motherAadhaar: z
     .string()
     .optional()
@@ -56,10 +72,16 @@ const schema = z.object({
     .refine((val) => !val || /^[6-9]\d{9}$/.test(val), {
       message: 'Enter a valid 10-digit WhatsApp number',
     }),
-  phone2: z.string().optional(),
+  phone2: z
+    .string()
+    .optional()
+    .refine((val) => !val || /^\d{10}$/.test(val), { message: 'Enter a valid 10-digit phone number' }),
   address: z.string().optional(),
   taluk: z.string().optional(),
-  pinCode: z.string().optional(),
+  pinCode: z
+    .string()
+    .optional()
+    .refine((val) => !val || /^\d{6}$/.test(val), { message: 'PIN code must be 6 digits' }),
   parentDistrict: z.string().optional(),
   parentState: z.string().optional(),
   guardianPhotoUrl: z.string().optional(),
@@ -71,30 +93,36 @@ const schema = z.object({
 
 
   nbsCentre: z.string().optional(),
-  region: z.enum(['urban', 'rural']).optional(),
-  socioEconomicStatus: z.enum(['aay', 'bpl', 'apl']).optional(),
-  educationLevel: z
-    .enum(['illiterate', 'primary', 'high_school', 'graduate_and_above', 'others'])
-    .optional(),
+  region: optionalEnum(['urban', 'rural']),
+  socioEconomicStatus: optionalEnum(['aay', 'bpl', 'apl']),
+  educationLevel: optionalEnum(['illiterate', 'primary', 'high_school', 'graduate_and_above', 'others']),
   educationLevelOther: z.string().optional(),
-  religion: z.enum(['hindu', 'muslim', 'christian', 'others']).optional(),
+  religion: optionalEnum(['hindu', 'muslim', 'christian', 'others']),
   religionOther: z.string().optional(),
-  deliveryType: z.enum(['normal', 'caesarean', 'breech', 'home']).optional(),
-  noOfSiblings: z.coerce.number().min(0).optional(),
+  deliveryType: optionalEnum(['normal', 'caesarean', 'breech', 'home']),
+  // Empty input means "not recorded", not 0.
+  noOfSiblings: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined || Number.isNaN(v) ? undefined : v),
+    z.coerce.number().int('Must be a whole number').min(0).optional(),
+  ),
 
   riskFactorIds: z.array(z.string()).default([]),
 
   familyHistoryHearingLoss: z.boolean().default(false),
-  consanguinityDegree: z.enum(['first', 'second', 'third']).optional().or(z.literal('')),
+  consanguinityDegree: optionalEnum(['first', 'second', 'third']),
   caregiverConcern: z.boolean().default(false),
   hrrRemarks: z.string().optional(),
   craniofacialRemarks: z.string().optional(),
-  reflexMoro: z.enum(['normal', 'abnormal', 'cnt']).optional(),
-  reflexRooting: z.enum(['normal', 'abnormal', 'cnt']).optional(),
-  reflexBabinski: z.enum(['normal', 'abnormal', 'cnt']).optional(),
-  reflexPalmar: z.enum(['normal', 'abnormal', 'cnt']).optional(),
-  reflexPlantar: z.enum(['normal', 'abnormal', 'cnt']).optional(),
-  reflexSucking: z.enum(['normal', 'abnormal', 'cnt']).optional(),
+  reflexMoro: optionalEnum(['normal', 'abnormal', 'cnt']),
+  reflexRooting: optionalEnum(['normal', 'abnormal', 'cnt']),
+  reflexBabinski: optionalEnum(['normal', 'abnormal', 'cnt']),
+  reflexPalmar: optionalEnum(['normal', 'abnormal', 'cnt']),
+  reflexPlantar: optionalEnum(['normal', 'abnormal', 'cnt']),
+  reflexSucking: optionalEnum(['normal', 'abnormal', 'cnt']),
+  suckingLatchProperly: optionalEnum(['yes', 'no']),
+  suckingBreathingDifficulty: optionalEnum(['yes', 'no']),
+  suckingFeedDuration: z.string().optional(),
+  suckingNasalRegurgitation: optionalEnum(['yes', 'no']),
 
   entFindings: z.string().optional(),
   cntReason: z.string().optional(),
@@ -104,10 +132,10 @@ const schema = z.object({
   teoaeLeft: testResult.nullish().or(z.literal('')),
   dpoaeRight: testResult.nullish().or(z.literal('')),
   dpoaeLeft: testResult.nullish().or(z.literal('')),
-  aabr1Right: passReferOnly.nullish().or(z.literal('')),
-  aabr1Left: passReferOnly.nullish().or(z.literal('')),
-  aabr2Right: passReferOnly.nullish().or(z.literal('')),
-  aabr2Left: passReferOnly.nullish().or(z.literal('')),
+  aabr1Right: aabrResult.nullish().or(z.literal('')),
+  aabr1Left: aabrResult.nullish().or(z.literal('')),
+  aabr2Right: aabrResult.nullish().or(z.literal('')),
+  aabr2Left: aabrResult.nullish().or(z.literal('')),
   overallResult: z.enum(['pass', 'refer']).nullish().or(z.literal('')),
 
   remarks: z.string().optional(),
@@ -127,8 +155,8 @@ const STEPS = [
 ];
 
 const STEP_FIELDS: Record<number, (keyof FormData)[]> = {
-  0: ['firstName', 'lastName', 'dateOfBirth'],
-  1: ['motherName', 'contactNumber'],
+  0: ['hospitalNumber', 'firstName', 'lastName', 'dateOfBirth', 'hospitalOfBirthId', 'districtId'],
+  1: ['motherName', 'motherAadhaar', 'contactNumber', 'whatsappNumber', 'phone2', 'pinCode'],
   2: [],
   3: [],
   4: [],
@@ -149,7 +177,6 @@ export default function RegisterChildPage() {
 
   const queryClient = useQueryClient();
   const [currentStep, setCurrentStep] = useState(0);
-  const [hrrFindings, setHrrFindings] = useState<'no_hrr' | 'hrr'>('no_hrr');
   const defaults = useDefaultLocationFilters();
   const { nbsCentre } = useAuth();
   const [location, setLocation] = useState<LocationFilterValue>({});
@@ -169,6 +196,8 @@ export default function RegisterChildPage() {
   const motherIdDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
+  // WhatsApp option: 'same' | 'not_available' | 'custom'
+  const [whatsappOption, setWhatsappOption] = useState<'same' | 'not_available' | 'custom'>('custom');
 
   const openCamera = async () => {
     try {
@@ -208,7 +237,7 @@ export default function RegisterChildPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
     trigger,
     setValue,
     getValues,
@@ -230,6 +259,10 @@ export default function RegisterChildPage() {
       reflexPalmar: 'normal',
       reflexPlantar: 'normal',
       reflexSucking: 'normal',
+      suckingLatchProperly: '',
+      suckingBreathingDifficulty: '',
+      suckingFeedDuration: '',
+      suckingNasalRegurgitation: '',
     },
   });
 
@@ -238,6 +271,10 @@ export default function RegisterChildPage() {
       setValue('nbsCentre', nbsCentre);
     }
   }, [nbsCentre, setValue]);
+
+  // Keeps the screening cascade (hidden sections, AABR N/A, overall result, CNT reason,
+  // re-screening date) consistent with HRR/screening answers from ANY step.
+  useScreeningCascade({ watch, getValues, setValue, setFollowUpDate });
 
   const riskFactorIds = watch('riskFactorIds');
   const familyHistoryHearingLoss = watch('familyHistoryHearingLoss');
@@ -253,10 +290,8 @@ export default function RegisterChildPage() {
   const parentState = watch('parentState');
   const parentDistrict = watch('parentDistrict');
   const contactNumberValue = watch('contactNumber');
+  const uniqueMotherIdValue = watch('uniqueMotherId');
   const birthOrderValue = watch('birthOrder');
-
-  // Store the previous state to only clear when state actually changes
-  const [prevVal, setPrevVal] = useState({ state: parentState });
 
   useEffect(() => {
     if (birthOrderValue && motherIdCheck.status === 'duplicate' && motherIdCheck.matches.length > 0 && !editId) {
@@ -272,9 +307,6 @@ export default function RegisterChildPage() {
           const val = (existingChild as unknown as Record<string, unknown>)[field];
           if (val !== undefined && val !== null) {
             setValue(field, val as any, { shouldValidate: true, shouldDirty: true });
-            if (field === 'parentState') {
-              setPrevVal({ state: val as string });
-            }
           }
         });
         if (existingChild.assessment) {
@@ -292,9 +324,6 @@ export default function RegisterChildPage() {
     }
   }, [birthOrderValue, motherIdCheck.status, motherIdCheck.matches, setValue, editId]);
 
-  // WhatsApp option: 'same' | 'not_available' | 'custom'
-  const [whatsappOption, setWhatsappOption] = useState<'same' | 'not_available' | 'custom'>('custom');
-
   // Keep WhatsApp in sync when mobile number changes and option is 'same'
   useEffect(() => {
     if (whatsappOption === 'same') {
@@ -302,30 +331,29 @@ export default function RegisterChildPage() {
     }
   }, [contactNumberValue, whatsappOption, setValue]);
 
+  // Auto-fill Mother's Aadhaar from Unique Mother ID (they are the same number)
   useEffect(() => {
-    if (parentState !== prevVal.state) {
-      // State changed, clear district and taluk
-      setValue('parentDistrict', undefined);
-      setValue('taluk', undefined);
-      setPrevVal({ state: parentState });
-    }
-  }, [parentState, prevVal, setValue]);
-
-
-
-  useEffect(() => {
-    const hasRiskFactor =
-      (riskFactorIds && riskFactorIds.length > 0) ||
-      familyHistoryHearingLoss ||
-      !!consanguinityDegree ||
-      caregiverConcernValue;
-
-    if (hasRiskFactor) {
-      setHrrFindings('hrr');
+    if (uniqueMotherIdValue) {
+      setValue('motherAadhaar', uniqueMotherIdValue, { shouldValidate: true });
     } else {
-      setHrrFindings('no_hrr');
+      // Clear Aadhaar only if it was previously auto-filled (matches the old mother ID)
+      const currentAadhaar = getValues('motherAadhaar');
+      if (!currentAadhaar || currentAadhaar === '') {
+        // Already empty, nothing to do
+      }
     }
-  }, [riskFactorIds, familyHistoryHearingLoss, consanguinityDegree, caregiverConcernValue]);
+  }, [uniqueMotherIdValue, setValue, getValues]);
+
+
+
+
+  const highRisk = hasHighRisk({
+    riskFactorIds,
+    familyHistoryHearingLoss,
+    consanguinityDegree,
+    caregiverConcern: caregiverConcernValue,
+  });
+  const hrrFindings: 'no_hrr' | 'hrr' = highRisk ? 'hrr' : 'no_hrr';
 
   const { data: staffList = [] } = useQuery({
     queryKey: ['staff'],
@@ -345,6 +373,11 @@ export default function RegisterChildPage() {
     }
   }, [editId, user, staffList, getValues, setValue]);
 
+  const { data: hospitals = [] } = useQuery({
+    queryKey: ['hospitals', 'register-child'],
+    queryFn: () => hospitalsService.list(),
+  });
+
   const { data: riskCategories = [] } = useQuery({
     queryKey: ['risk-categories'],
     queryFn: () => mastersService.listRiskCategories(),
@@ -355,6 +388,20 @@ export default function RegisterChildPage() {
     rc.label.toLowerCase().includes('craniofacial')
   )?.id;
   const craniofacialSelected = !!(craniofacialCategoryId && riskFactorIds.includes(craniofacialCategoryId));
+
+  // Auto-clear craniofacialRemarks if craniofacial anomaly is no longer selected
+  useEffect(() => {
+    if (!craniofacialSelected && getValues('craniofacialRemarks')) {
+      setValue('craniofacialRemarks', '', { shouldDirty: true });
+    }
+  }, [craniofacialSelected, setValue, getValues]);
+
+  // Auto-clear hrrRemarks if child is no longer in High-Risk Register (HRR-0)
+  useEffect(() => {
+    if (!highRisk && getValues('hrrRemarks')) {
+      setValue('hrrRemarks', '', { shouldDirty: true });
+    }
+  }, [highRisk, setValue, getValues]);
 
   const babyAge = (() => {
     if (!dateOfBirthValue) return null;
@@ -382,14 +429,24 @@ export default function RegisterChildPage() {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return;
     try {
-      const saved = JSON.parse(raw) as { values: FormData; step: number; savedAt: string };
+      const saved = JSON.parse(raw) as {
+        values: FormData;
+        step: number;
+        savedAt: string;
+        ui?: { firstNamePrefix?: 'bo' | ''; followUpDate?: string; whatsappOption?: 'same' | 'not_available' | 'custom' };
+      };
       toast('Unsaved registration draft found', {
         description: `Saved ${new Date(saved.savedAt).toLocaleString()}`,
         action: {
           label: 'Restore',
           onClick: () => {
             reset(saved.values);
-            setCurrentStep(saved.step);
+            const step = Math.min(Math.max(Number(saved.step) || 0, 0), STEPS.length - 1);
+            setCurrentStep(step);
+            setFirstNamePrefix(saved.ui?.firstNamePrefix ?? '');
+            setFollowUpDate(saved.values.overallResult === 'refer' ? saved.ui?.followUpDate ?? '' : '');
+            setWhatsappOption(saved.ui?.whatsappOption ?? 'custom');
+            setGuardianPhotoPreview(saved.values.guardianPhotoUrl || null);
             if (nbsCentre) {
               setValue('nbsCentre', nbsCentre);
             }
@@ -409,20 +466,40 @@ export default function RegisterChildPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (editId) return;
-    const interval = setInterval(() => {
+  const saveDraft = () => {
+    const ui = { firstNamePrefix, followUpDate, whatsappOption };
+    const write = (values: FormData) =>
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({
-          values: getValues(),
-          step: currentStep,
-          savedAt: new Date().toISOString(),
-        }),
+        JSON.stringify({ values, step: currentStep, savedAt: new Date().toISOString(), ui }),
       );
+    try {
+      write(getValues());
+      return true;
+    } catch {
+      // Quota exceeded (e.g. a large guardian photo) — retry without the photo.
+      try {
+        write({ ...getValues(), guardianPhotoUrl: '' });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+  const saveDraftRef = useRef(saveDraft);
+  saveDraftRef.current = saveDraft;
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  useEffect(() => {
+    if (editId) return;
+    // Autosave only once the user has actually entered something, so an untouched
+    // form doesn't produce a "draft found" prompt next time.
+    const interval = setInterval(() => {
+      if (isDirtyRef.current) saveDraftRef.current();
     }, 30000);
     return () => clearInterval(interval);
-  }, [currentStep, getValues]);
+  }, [editId]);
 
   useEffect(() => {
     if (!location.hospitalId) return;
@@ -456,15 +533,25 @@ export default function RegisterChildPage() {
       ?.filter((s) => s.type === 'initial')
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
 
+    // Split a stored "B/o <name>" back into the prefix toggle + plain first name.
+    const storedFirstName = editChild.firstName ?? '';
+    const boMatch = /^B\/o\s+/i.exec(storedFirstName);
+    setFirstNamePrefix(boMatch ? 'bo' : '');
+
+    const storedWhatsapp = editChild.whatsappNumber ?? '';
+    setWhatsappOption(storedWhatsapp && storedWhatsapp === editChild.contactNumber ? 'same' : 'custom');
+
     reset({
       ...editChild,
+      firstName: boMatch ? storedFirstName.slice(boMatch[0].length) : storedFirstName,
+      birthOrder: editChild.birthOrder ?? '',
       dateOfBirth: editChild.dateOfBirth?.split('T')[0] ?? '',
       hospitalOfBirthId: editChild.hospitalOfBirthId,
       districtId: editChild.districtId,
       assessingStaffId: editChild.assessingStaffId,
       riskFactorIds: editChild.riskFactorIds ?? [],
       familyHistoryHearingLoss: editChild.assessment?.familyHistoryHearingLoss ?? false,
-      consanguinityDegree: editChild.assessment?.consanguinityDegree,
+      consanguinityDegree: editChild.assessment?.consanguinityDegree ?? '',
       caregiverConcern: editChild.assessment?.caregiverConcern ?? false,
       hrrRemarks: editChild.assessment?.hrrRemarks ?? '',
       craniofacialRemarks: editChild.assessment?.craniofacialRemarks ?? '',
@@ -474,7 +561,11 @@ export default function RegisterChildPage() {
       reflexPalmar: editChild.assessment?.reflexPalmar,
       reflexPlantar: editChild.assessment?.reflexPlantar,
       reflexSucking: editChild.assessment?.reflexSucking,
-      remarks: editChild.remarks,
+      suckingLatchProperly: editChild.assessment?.suckingLatchProperly ?? '',
+      suckingBreathingDifficulty: editChild.assessment?.suckingBreathingDifficulty ?? '',
+      suckingFeedDuration: editChild.assessment?.suckingFeedDuration ?? '',
+      suckingNasalRegurgitation: editChild.assessment?.suckingNasalRegurgitation ?? '',
+      remarks: editChild.remarks ?? '',
       entFindings: initialScreening?.entFindings ?? '',
       cntReason: initialScreening?.cntReason ?? '',
       boaResult: initialScreening?.boaResult ?? '',
@@ -494,6 +585,13 @@ export default function RegisterChildPage() {
       educationLevelOther: editChild.educationLevelOther ?? '',
       religionOther: editChild.religionOther ?? '',
     } as any);
+    // Pre-fill the pending re-screening date (if any) so saving doesn't lose it.
+    const pendingRescreening = editScreenings?.find((s) => s.type === 'rescreening' && s.status !== 'completed');
+    setFollowUpDate(
+      initialScreening?.overallResult === 'refer' && pendingRescreening?.dueDate
+        ? pendingRescreening.dueDate.split('T')[0]
+        : '',
+    );
     if (editChild.hospitalOfBirthId) {
       setLocation({
         hospitalId: editChild.hospitalOfBirthId,
@@ -503,241 +601,326 @@ export default function RegisterChildPage() {
     }
   }, [editChild, editScreenings, isEditScreeningsLoading, editId, reset]);
 
+  type SubmitResult = { child: { id: string }; warnings: string[]; rescreeningDate?: string; staleRescreening?: boolean };
+
   const mutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      try {
-        const {
-          familyHistoryHearingLoss,
-          consanguinityDegree,
-          caregiverConcern,
-          reflexMoro,
-          reflexRooting,
-          reflexBabinski,
-          reflexPalmar,
-          reflexPlantar,
-          reflexSucking,
-          entFindings,
-          cntReason,
-          boaResult,
-          teoaeRight,
-          teoaeLeft,
-          dpoaeRight,
-          dpoaeLeft,
-          aabr1Right,
-          aabr1Left,
-          overallResult,
-          // Strip form-only fields that don't belong in the baby payload
-          audiologistId: _audiologistId,
-          guardianPhotoUrl: _guardianPhotoUrl,
-          oaeTestSelection: _oaeTestSelection,
-          ...rest
-        } = data;
+    mutationFn: async (data: FormData): Promise<SubmitResult> => {
+      const isEdit = !!editId;
+      // Create: omit empty fields. Edit: send null so a field the user cleared is really cleared.
+      const blank = isEdit ? null : undefined;
+      const clean = (v: unknown) => {
+        if (typeof v === 'string') return v.trim() === '' ? blank : v.trim();
+        return v === undefined || v === null ? blank : v;
+      };
+      const toInt = (v: unknown): number | null | undefined => {
+        if (v === '' || v === undefined || v === null) return blank;
+        const n = parseInt(String(v), 10);
+        return Number.isNaN(n) ? blank : n;
+      };
 
-        // Strip empty-string optional fields to avoid backend @IsIn / @IsEmail failures
-        const cleanRest = Object.fromEntries(
-          Object.entries(rest).filter(([, v]) => v !== '' && v !== undefined && v !== null)
-        ) as typeof rest;
+      const highRiskNow = hasHighRisk(data);
+      // New registrations never carry answers from sections the cascade hides. For edits,
+      // useScreeningCascade has already cleared anything the user hid, and stored data the
+      // user did not touch is preserved as-is.
+      const scr = isEdit ? data : sanitizeScreening(data, highRiskNow);
+      const outcome = computeScreeningOutcome(scr, highRiskNow);
+      const overallResult = (isEdit ? scr.overallResult : outcome.overallResult) || '';
 
-        // Coerce numeric fields — getValues() returns raw DOM strings, backend needs integers
-        const toInt = (v: unknown): number | undefined => {
-          const n = parseInt(String(v), 10);
-          return isNaN(n) ? undefined : n;
-        };
+      const selectedStaff = data.assessingStaffId
+        ? staffList.find((s) => s.id === data.assessingStaffId)
+        : undefined;
 
-        // Resolve assessing staff snapshot — persisted even if staff is deleted later
-        const selectedStaff = cleanRest.assessingStaffId
-          ? staffList.find((s) => s.id === cleanRest.assessingStaffId)
-          : undefined;
+      const firstName = (data.firstName ?? '').trim();
+      const fullFirstName = firstNamePrefix === 'bo' ? `B/o ${firstName}`.trim() : firstName;
 
-        // Validate followUpDate
-        if (overallResult === 'refer' && !followUpDate) {
-          throw new Error('Please schedule a Re-Screening visit date before submitting.');
+      const babyPayload = {
+        hospitalNumber: data.hospitalNumber.trim(),
+        uniqueMotherId: clean(data.uniqueMotherId),
+        birthOrder: clean(data.birthOrder),
+        firstName: clean(fullFirstName),
+        lastName: data.lastName.trim(),
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        motherName: data.motherName.trim(),
+        fatherName: clean(data.fatherName),
+        contactNumber: data.contactNumber,
+        whatsappNumber: clean(whatsappOption === 'same' ? data.contactNumber : whatsappOption === 'not_available' ? '' : data.whatsappNumber),
+        phone2: clean(data.phone2),
+        address: clean(data.address),
+        taluk: clean(data.taluk),
+        pinCode: clean(data.pinCode),
+        parentDistrict: clean(data.parentDistrict),
+        parentState: clean(data.parentState),
+        hospitalOfBirthId: data.hospitalOfBirthId,
+        districtId: data.districtId,
+        assessingStaffId: clean(data.assessingStaffId),
+        // Snapshot assessing staff details so they survive staff deletion
+        assessingStaffEmployeeId: selectedStaff?.employeeId ?? blank,
+        assessingStaffName: selectedStaff?.fullName ?? blank,
+        nbsCentre: clean(data.nbsCentre),
+        region: clean(data.region),
+        socioEconomicStatus: clean(data.socioEconomicStatus),
+        educationLevel: clean(data.educationLevel),
+        educationLevelOther: data.educationLevel === 'others' ? clean(data.educationLevelOther) : blank,
+        religion: clean(data.religion),
+        religionOther: data.religion === 'others' ? clean(data.religionOther) : blank,
+        deliveryType: clean(data.deliveryType),
+        noOfSiblings: toInt(data.noOfSiblings),
+        riskFactorIds: data.riskFactorIds ?? [],
+        assessment: {
+          familyHistoryHearingLoss: !!data.familyHistoryHearingLoss,
+          consanguinityDegree: clean(data.consanguinityDegree),
+          caregiverConcern: !!data.caregiverConcern,
+          hrrRemarks: clean(data.hrrRemarks),
+          craniofacialRemarks: craniofacialSelected ? clean(data.craniofacialRemarks) : blank,
+          reflexMoro: clean(data.reflexMoro),
+          reflexRooting: clean(data.reflexRooting),
+          reflexBabinski: clean(data.reflexBabinski),
+          reflexPalmar: clean(data.reflexPalmar),
+          reflexPlantar: clean(data.reflexPlantar),
+          reflexSucking: clean(data.reflexSucking),
+          suckingLatchProperly: clean(data.suckingLatchProperly),
+          suckingBreathingDifficulty: clean(data.suckingBreathingDifficulty),
+          suckingFeedDuration: clean(data.suckingFeedDuration),
+          suckingNasalRegurgitation: clean(data.suckingNasalRegurgitation),
+        },
+        remarks: clean(data.remarks),
+      } as unknown as Parameters<typeof childrenService.create>[0];
+
+      const screeningFields = {
+        entFindings: clean(scr.entFindings),
+        cntReason: outcome.hasCnt ? clean(scr.cntReason) : blank,
+        boaResult: clean(scr.boaResult),
+        teoaeRight: clean(scr.teoaeRight),
+        teoaeLeft: clean(scr.teoaeLeft),
+        dpoaeRight: clean(scr.dpoaeRight),
+        dpoaeLeft: clean(scr.dpoaeLeft),
+        aabr1Right: clean(scr.aabr1Right),
+        aabr1Left: clean(scr.aabr1Left),
+        overallResult: clean(overallResult),
+        remarks: clean(data.remarks),
+      };
+      const hasScreeningData = Object.entries(screeningFields)
+        .filter(([k]) => k !== 'remarks')
+        .some(([, v]) => v !== undefined && v !== null);
+
+      const needsRescreening = overallResult === 'refer';
+      const rescreeningDate = needsRescreening ? followUpDate || undefined : undefined;
+      if (needsRescreening && !rescreeningDate) {
+        throw new Error('Please schedule a Re-Screening visit date before submitting.');
+      }
+      const dueDateISO = rescreeningDate ? new Date(`${rescreeningDate}T00:00:00`).toISOString() : undefined;
+
+      const warnings: string[] = [];
+
+      if (isEdit) {
+        const child = await childrenService.update(editId!, babyPayload);
+        const existing = await screeningsService.getByChildId(editId!);
+        const initial = existing
+          .filter((s) => s.type === 'initial')
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+
+        if (initial) {
+          await screeningsService.update(initial.id, {
+            status: 'completed',
+            ...screeningFields,
+          } as unknown as Partial<Screening>);
+        } else if (hasScreeningData) {
+          await screeningsService.create({
+            childId: editId!,
+            type: 'initial',
+            status: 'completed',
+            ...screeningFields,
+          } as unknown as Partial<Screening>);
         }
 
-        const payload = {
-          ...cleanRest,
-          birthWeightGrams: toInt((cleanRest as Record<string, unknown>).birthWeightGrams),
-          gestationalAgeWeeks: toInt((cleanRest as Record<string, unknown>).gestationalAgeWeeks),
-          noOfSiblings: toInt(cleanRest.noOfSiblings),
-          // Snapshot assessing staff details so they survive deletion
-          assessingStaffEmployeeId: selectedStaff?.employeeId,
-          assessingStaffName: selectedStaff?.fullName,
-          // Strip empty-string enum values from assessment
-          assessment: Object.fromEntries(
-            Object.entries({
-              familyHistoryHearingLoss,
-              consanguinityDegree,
-              caregiverConcern,
-              hrrRemarks: data.hrrRemarks,
-              craniofacialRemarks: data.craniofacialRemarks,
-              reflexMoro,
-              reflexRooting,
-              reflexBabinski,
-              reflexPalmar,
-              reflexPlantar,
-              reflexSucking,
-            }).filter(([, v]) => (v as any) !== '' && v !== undefined && v !== null)
-          ) as Parameters<typeof childrenService.create>[0]['assessment'],
-        };
-
-        const { screeningsService } = await import('../../services/api');
-
-        if (editId) {
-          const updatedChild = await childrenService.update(editId, payload);
-
-          if (overallResult || boaResult || teoaeRight || aabr1Right) {
-            const childScreenings = await screeningsService.getByChildId(editId);
-            const existingScreening = childScreenings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-
-            const screeningData = {
-              childId: editId,
-              type: 'initial',
-              status: 'completed' as const,
-              entFindings: entFindings || undefined,
-              cntReason: cntReason || undefined,
-              boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-              teoaeRight: teoaeRight || undefined,
-              teoaeLeft: teoaeLeft || undefined,
-              dpoaeRight: dpoaeRight || undefined,
-              dpoaeLeft: dpoaeLeft || undefined,
-              aabr1Right: (aabr1Right || undefined) as any,
-              aabr1Left: (aabr1Left || undefined) as any,
-              overallResult: overallResult || undefined,
-              remarks: data.remarks || undefined,
-            } as Partial<Screening>;
-
-            if (existingScreening) {
-              const { childId, ...updateData } = screeningData;
-              await screeningsService.update(existingScreening.id, updateData);
-            } else {
-              await screeningsService.create(screeningData);
-            }
+        const pending = existing.find((s) => s.type === 'rescreening' && s.status !== 'completed');
+        let staleRescreening = false;
+        if (dueDateISO) {
+          if (pending) {
+            await screeningsService.update(pending.id, { dueDate: dueDateISO });
+          } else {
+            await screeningsService.create({
+              childId: editId!,
+              status: 'scheduled',
+              type: 'rescreening',
+              dueDate: dueDateISO,
+              remarks: 'Scheduled for AABR - 2nd Screening',
+            });
           }
-
-          if (followUpDate) {
-            const childScreenings = await screeningsService.getByChildId(editId);
-            const rescreening = childScreenings.find((s: any) => s.type === 'rescreening');
-            if (rescreening) {
-              await screeningsService.update(rescreening.id, { dueDate: new Date(followUpDate).toISOString() });
-            } else {
-              await screeningsService.create({
-                childId: editId,
-                status: 'scheduled',
-                type: 'rescreening',
-                dueDate: new Date(followUpDate).toISOString(),
-                remarks: 'Scheduled for AABR - 2nd Screening',
-              });
-            }
-          }
-          return updatedChild;
+        } else if (pending) {
+          staleRescreening = true;
         }
+        return { child, warnings, rescreeningDate, staleRescreening };
+      }
 
-        const child = await childrenService.create(payload);
+      // The child record is the critical write. Screening/re-screening are separate API calls;
+      // if one of those fails the child already exists, so we must NOT let the user resubmit
+      // (that would hit the duplicate-record guard). Report it and send them to the record.
+      const child = await childrenService.create(babyPayload);
 
-        if (overallResult || boaResult || teoaeRight || aabr1Right) {
+      if (hasScreeningData) {
+        try {
           await screeningsService.create({
             childId: child.id,
             type: 'initial',
             status: 'completed',
-            entFindings: entFindings || undefined,
-            cntReason: cntReason || undefined,
-            boaResult: (boaResult || undefined) as 'pass' | 'refer' | 'cnt' | 'not_done' | undefined,
-            teoaeRight: teoaeRight || undefined,
-            teoaeLeft: teoaeLeft || undefined,
-            dpoaeRight: dpoaeRight || undefined,
-            dpoaeLeft: dpoaeLeft || undefined,
-            aabr1Right: (aabr1Right || undefined) as any,
-            aabr1Left: (aabr1Left || undefined) as any,
-            overallResult: overallResult || undefined,
-            remarks: data.remarks || undefined,
-          } as Partial<Screening>);
+            ...screeningFields,
+          } as unknown as Partial<Screening>);
+        } catch (err) {
+          console.error('[RegisterChild] initial screening save failed', err);
+          warnings.push('the initial screening results');
         }
+      }
 
-        if (followUpDate) {
+      if (dueDateISO) {
+        try {
           await screeningsService.create({
             childId: child.id,
             status: 'scheduled',
             type: 'rescreening',
-            dueDate: new Date(followUpDate).toISOString(),
+            dueDate: dueDateISO,
             remarks: 'Scheduled for AABR - 2nd Screening',
           });
+        } catch (err) {
+          console.error('[RegisterChild] re-screening scheduling failed', err);
+          warnings.push('the re-screening appointment');
         }
+      }
 
-        return child;
-      } catch (err) {
-        console.error("REGISTRATION ERROR:", err);
-        throw err;
-      }
+      return { child, warnings, rescreeningDate };
     },
-    onSuccess: async (data) => {
-      if (followUpDate) {
-        queryClient.invalidateQueries({ queryKey: ['screenings'] });
-      }
+    onSuccess: ({ child, warnings, rescreeningDate, staleRescreening }) => {
+      queryClient.invalidateQueries({ queryKey: ['screenings'] });
       queryClient.invalidateQueries({ queryKey: ['children'] });
+      queryClient.invalidateQueries({ queryKey: ['child', child.id] });
+      queryClient.invalidateQueries({ queryKey: ['nextPocdNumber'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
-      localStorage.removeItem(DRAFT_KEY);
-      toast.success(followUpDate
-        ? `Child registered! Re-Screening scheduled for ${new Date(followUpDate).toLocaleDateString()}.`
-        : 'Child registered successfully!');
-      navigate(`/children/${data.id}`);
+      if (!editId) localStorage.removeItem(DRAFT_KEY);
+
+      const when = rescreeningDate
+        ? new Date(`${rescreeningDate}T00:00:00`).toLocaleDateString('en-IN')
+        : '';
+      if (editId) {
+        toast.success(rescreeningDate ? `Changes saved. Re-Screening on ${when}.` : 'Changes saved.');
+        if (staleRescreening) {
+          toast.warning('The result is no longer REFER, but a re-screening is still scheduled. Review it in Follow-ups.');
+        }
+      } else {
+        toast.success(rescreeningDate ? `Child registered! Re-Screening scheduled for ${when}.` : 'Child registered successfully!');
+      }
+      if (warnings.length) {
+        toast.error(`The child was saved, but ${warnings.join(' and ')} could not be saved. Please add them from the child's record.`, {
+          duration: 12000,
+        });
+      }
+      navigate(`/children/${child.id}`);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error('[RegisterChild] API error:', err);
-      const msg = err?.response?.data?.message || err?.message || 'Failed to register child.';
+      const e = err as { response?: { data?: { message?: string | string[] } }; message?: string };
+      const msg = e?.response?.data?.message || e?.message || (editId ? 'Failed to save changes.' : 'Failed to register child.');
       toast.error(Array.isArray(msg) ? msg.join(', ') : msg);
     },
   });
 
-  const onNext = async () => {
-    const isStepValid = await trigger(STEP_FIELDS[currentStep]);
-    if (!isStepValid) return;
-
-    // If Unique Mother ID is a duplicate, require birth order selection before proceeding
-    if (currentStep === 0 && motherIdCheck.status === 'duplicate' && !getValues('birthOrder')) {
-      toast.error('Duplicate Unique Mother ID detected — please select the birth order relationship (Twin, Triplet, etc.) before continuing.');
-      return;
+  /** Validates one step. Returns false (and tells the user why) if it can't be left yet. */
+  const validateStep = async (step: number): Promise<boolean> => {
+    const fields = STEP_FIELDS[step] ?? [];
+    if (fields.length && !(await trigger(fields))) {
+      const missingHospital = fields.includes('hospitalOfBirthId') && !getValues('hospitalOfBirthId');
+      toast.error(missingHospital ? 'Please select the hospital of birth.' : 'Please fix the highlighted fields before continuing.');
+      return false;
     }
-
-    // HRR Remarks is optional even when HRR (1) is selected
-
-    // HRR step (step 3): craniofacial remarks mandatory when craniofacial is selected
-    if (currentStep === 3 && craniofacialSelected && !getValues('craniofacialRemarks')?.trim()) {
+    if (step === 0) {
+      if (motherIdCheck.status === 'checking') {
+        toast('Still checking the Unique Mother ID — please try again in a moment.');
+        return false;
+      }
+      if (motherIdCheck.status === 'duplicate' && !getValues('birthOrder')) {
+        toast.error('Duplicate Unique Mother ID detected — please select the birth order relationship (Twin, Triplet, etc.) before continuing.');
+        return false;
+      }
+    }
+    // HRR Remarks is optional even when HRR (1) is selected; craniofacial details are not.
+    if (step === 3 && craniofacialSelected && !getValues('craniofacialRemarks')?.trim()) {
       toast.error('Please describe the craniofacial anomaly details before proceeding.');
+      return false;
+    }
+    return true;
+  };
+
+  const changeStep = (step: number) => {
+    setCurrentStep(step);
+    // The confirmation applies to what was on screen; any trip away from review requires re-confirming.
+    if (step !== STEPS.length - 1) setConfirmed(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Moves to any step. Going forward validates every step in between. */
+  const goToStep = async (target: number) => {
+    if (target === currentStep || target < 0 || target >= STEPS.length) return;
+    if (target < currentStep) {
+      changeStep(target);
       return;
     }
-
-    if (editId && currentStep === 4) {
-      setCurrentStep(6);
-    } else {
-      setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
+    for (let step = currentStep; step < target; step++) {
+      if (!(await validateStep(step))) {
+        if (step !== currentStep) changeStep(step);
+        return;
+      }
     }
+    changeStep(target);
   };
 
-  const onPrev = () => {
-    if (editId && currentStep === 6) {
-      setCurrentStep(4);
-    } else {
-      setCurrentStep((s) => Math.max(s - 1, 0));
-    }
+  const onNext = () => goToStep(currentStep + 1);
+  const onPrev = () => goToStep(currentStep - 1);
+
+  const stepOfField = (field: string): number => {
+    const entry = Object.entries(STEP_FIELDS).find(([, fields]) => (fields as string[]).includes(field));
+    return entry ? Number(entry[0]) : currentStep;
   };
+
+  const onSubmit = handleSubmit(
+    async (d) => {
+      // Re-run step checks that live outside the zod schema.
+      for (let step = 0; step < STEPS.length - 1; step++) {
+        if (!(await validateStep(step))) {
+          changeStep(step);
+          return;
+        }
+      }
+      const demoFields = ['region', 'socioEconomicStatus', 'educationLevel', 'religion'] as const;
+      const missingDemo = demoFields.filter((f) => !d[f]);
+      if (
+        missingDemo.length > 0 &&
+        !window.confirm('Some socio-demographic details are missing. Are you sure you want to submit without them?')
+      ) {
+        return;
+      }
+      mutation.mutate(d);
+    },
+    (formErrors) => {
+      console.warn('Form validation errors:', formErrors);
+      const keys = Object.keys(formErrors);
+      const firstStep = Math.min(...keys.map(stepOfField));
+      const messages = Object.values(formErrors).map((e) => e?.message).filter(Boolean);
+      toast.error(`Please fix the errors before submitting: ${messages.join(', ')}`);
+      if (Number.isFinite(firstStep) && firstStep !== currentStep) changeStep(firstStep);
+    },
+  );
 
   const onSaveDraft = () => {
-    localStorage.setItem(
-      DRAFT_KEY,
-      JSON.stringify({ values: getValues(), step: currentStep, savedAt: new Date().toISOString() }),
-    );
-    toast.success('Draft saved. It will be offered back to you next time you open this form.');
+    if (saveDraft()) {
+      toast.success('Draft saved. It will be offered back to you next time you open this form.');
+    } else {
+      toast.error('Could not save the draft — browser storage is unavailable or full.');
+    }
   };
 
 
   const percentComplete = Math.round(((currentStep + 1) / STEPS.length) * 100);
-
-  // currentStep is the index in STEPS. For FormStepper we might need to map it.
-  // Actually, FormStepper just takes currentStep and highlights that index.
-  // We'll leave FormStepper as is and it will just jump over the screening step when edited,
-  // or we can just render STEPS as is and it shows 'Screening' but we skip it.
-  // To avoid confusion, let's keep STEPS but maybe show "Skip"
 
   if (isEditLoading || (editId && isEditScreeningsLoading)) {
     return <div className="p-8 text-center">Loading...</div>;
@@ -758,15 +941,21 @@ export default function RegisterChildPage() {
         </span>
         <span>{percentComplete}% complete</span>
       </div>
-      <FormStepper steps={STEPS} currentStep={currentStep} onStepClick={setCurrentStep} />
+      <FormStepper steps={STEPS} currentStep={currentStep} onStepClick={(i) => void goToStep(i)} />
 
       <form onSubmit={(e) => e.preventDefault()}>
         <FormCard title={STEPS[currentStep].label}>
           {currentStep === 0 && (
             <FormSection title="Child Information">
               <div className="col-span-2">
-                <label className="text-sm font-medium">MR Records No.</label>
-                <Input {...register('hospitalNumber')} />
+                <label className="text-sm font-medium">MR Records No. *</label>
+                <Input
+                  {...register('hospitalNumber')}
+                  className={cn(errors.hospitalNumber && 'border-destructive')}
+                />
+                {errors.hospitalNumber && (
+                  <span className="text-xs text-destructive">{errors.hospitalNumber.message}</span>
+                )}
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">POCD Number</label>
@@ -793,6 +982,8 @@ export default function RegisterChildPage() {
                     onChange={(e) => {
                       register('uniqueMotherId').onChange(e);
                       const val = e.target.value.trim();
+                      // Auto-fill Mother's Aadhaar (same number as Unique Mother ID)
+                      setValue('motherAadhaar', val, { shouldValidate: true });
                       if (!val) { setMotherIdCheck({ status: 'idle', matches: [] }); return; }
                       setMotherIdCheck((p) => ({ ...p, status: 'checking' }));
                       if (motherIdDebounceRef.current) clearTimeout(motherIdDebounceRef.current);
@@ -932,6 +1123,41 @@ export default function RegisterChildPage() {
                 </div>
               </div>
 
+              <div className="col-span-3">
+                <label className="text-sm font-medium">Hospital of Birth *</label>
+                <select
+                  value={location.hospitalId ?? ''}
+                  disabled={!!defaults.hospitalId && !editId}
+                  onChange={(e) => {
+                    const h = hospitals.find((x) => x.id === e.target.value);
+                    setLocation((prev) => ({
+                      ...prev,
+                      hospitalId: h?.id,
+                      districtId: h?.districtId,
+                      state: h?.state,
+                    }));
+                    setValue('hospitalOfBirthId', h?.id ?? '', { shouldValidate: true, shouldDirty: true });
+                    setValue('districtId', h?.districtId ?? '', { shouldValidate: true, shouldDirty: true });
+                  }}
+                  className={cn(
+                    'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1 disabled:cursor-not-allowed disabled:bg-muted/50',
+                    errors.hospitalOfBirthId && 'border-destructive',
+                  )}
+                >
+                  <option value="" disabled>
+                    -- Select Hospital --
+                  </option>
+                  {hospitals.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
+                      {h.district ? ` — ${h.district}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {errors.hospitalOfBirthId && (
+                  <span className="text-xs text-destructive">{errors.hospitalOfBirthId.message}</span>
+                )}
+              </div>
               <input type="hidden" {...register('hospitalOfBirthId')} />
               <input type="hidden" {...register('districtId')} />
               <input type="hidden" {...register('audiologistId')} />
@@ -979,10 +1205,17 @@ export default function RegisterChildPage() {
                   placeholder="12-digit Aadhaar number"
                   maxLength={12}
                   inputMode="numeric"
-                  className={cn(errors.motherAadhaar && 'border-destructive')}
+                  readOnly={!!uniqueMotherIdValue}
+                  disabled={!!uniqueMotherIdValue}
+                  className={cn(
+                    errors.motherAadhaar && 'border-destructive',
+                    uniqueMotherIdValue && 'bg-muted/50 cursor-not-allowed',
+                  )}
                 />
                 {errors.motherAadhaar ? (
                   <span className="text-xs text-destructive">{errors.motherAadhaar.message}</span>
+                ) : uniqueMotherIdValue ? (
+                  <span className="text-xs text-green-600">Auto-filled from Unique Mother ID</span>
                 ) : (
                   <span className="text-xs text-muted-foreground">Optional — 12 digits</span>
                 )}
@@ -1051,6 +1284,7 @@ export default function RegisterChildPage() {
                 </div>
                 {whatsappOption === 'same' ? (
                   <Input
+                    key="wa-same"
                     value={contactNumberValue || ''}
                     readOnly
                     disabled
@@ -1059,6 +1293,7 @@ export default function RegisterChildPage() {
                   />
                 ) : whatsappOption === 'not_available' ? (
                   <Input
+                    key="wa-na"
                     value="Not available"
                     readOnly
                     disabled
@@ -1066,6 +1301,7 @@ export default function RegisterChildPage() {
                   />
                 ) : (
                   <Input
+                    key="wa-custom"
                     {...register('whatsappNumber')}
                     placeholder="WhatsApp number"
                     maxLength={10}
@@ -1094,7 +1330,14 @@ export default function RegisterChildPage() {
               <div className="col-span-3">
                 <label className="text-sm font-medium">State *</label>
                 <select
-                  {...register('parentState')}
+                  {...register('parentState', {
+                    // Only a user change of state invalidates district/taluk. (Done here rather than
+                    // in an effect so loading an existing record or a draft never wipes them.)
+                    onChange: () => {
+                      setValue('parentDistrict', '');
+                      setValue('taluk', '');
+                    },
+                  })}
                   className={cn(
                     'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm mt-1',
                     errors.parentState && 'border-destructive'
@@ -1116,7 +1359,8 @@ export default function RegisterChildPage() {
                   placeholder="-- Select or type District --"
                   disabled={!parentState}
                   onChange={(val) => {
-                    setValue('parentDistrict', val, { shouldValidate: true });
+                    if (val !== getValues('parentDistrict')) setValue('taluk', '');
+                    setValue('parentDistrict', val, { shouldValidate: true, shouldDirty: true });
                   }}
                   value={watch('parentDistrict') || ''}
                 />
@@ -1128,7 +1372,7 @@ export default function RegisterChildPage() {
                   options={getTaluksForDistrict(parentState || '', parentDistrict || '')}
                   placeholder="-- Select or type Taluk --"
                   onChange={(val) => {
-                    setValue('taluk', val, { shouldValidate: true });
+                    setValue('taluk', val, { shouldValidate: true, shouldDirty: true });
                   }}
                   value={watch('taluk') || ''}
                   disabled={!parentDistrict}
@@ -1355,11 +1599,10 @@ export default function RegisterChildPage() {
                     const text = e.clipboardData.getData('text');
                     if (parseInt(text, 10) < 0) e.preventDefault();
                   }}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val < 0) {
-                      e.target.value = '0';
-                    }
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    const val = parseInt(el.value, 10);
+                    if (!isNaN(val) && val < 0) el.value = '0';
                   }}
                 />
               </div>
@@ -1371,7 +1614,7 @@ export default function RegisterChildPage() {
               <div className="col-span-6">
                 <RiskFactorChecklist
                   selectedIds={riskFactorIds}
-                  onChange={(ids) => setValue('riskFactorIds', ids)}
+                  onChange={(ids) => setValue('riskFactorIds', ids, { shouldDirty: true, shouldValidate: true })}
                 >
                   <div className="flex items-start space-x-3">
                     <input
@@ -1474,14 +1717,84 @@ export default function RegisterChildPage() {
 
           {currentStep === 4 && (
             <FormSection title="Reflex Assessment">
-              <div className="col-span-6 space-y-2">
-                <h4 className="text-sm font-semibold">New Born Reflexes</h4>
-                <ReflexSelector register={register} name="reflexMoro" label="Moro / Startle" />
-                <ReflexSelector register={register} name="reflexRooting" label="Rooting" />
-                <ReflexSelector register={register} name="reflexBabinski" label="Babinski" />
-                <ReflexSelector register={register} name="reflexPalmar" label="Palmar" />
-                <ReflexSelector register={register} name="reflexPlantar" label="Plantar" />
-                <ReflexSelector register={register} name="reflexSucking" label="Sucking" />
+              <div className="col-span-6 space-y-5">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">New Born Reflexes</h4>
+                  <ReflexSelector register={register} name="reflexMoro" label="Moro / Startle" />
+                  <ReflexSelector register={register} name="reflexRooting" label="Rooting" />
+                  <ReflexSelector register={register} name="reflexBabinski" label="Babinski" />
+                  <ReflexSelector register={register} name="reflexPalmar" label="Palmar" />
+                  <ReflexSelector register={register} name="reflexPlantar" label="Plantar" />
+                  <ReflexSelector register={register} name="reflexSucking" label="Sucking" />
+                </div>
+
+                {/* Sub-topic: Sucking Reflex */}
+                <div className="pt-4 border-t border-border space-y-3">
+                  <div>
+                    <h4 className="text-sm font-semibold text-primary">Sucking Reflex</h4>
+                    <p className="text-xs text-muted-foreground">Feeding and respiratory assessment</p>
+                  </div>
+
+                  {/* Question 1 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-md border bg-card gap-2">
+                    <span className="text-sm font-medium">1. Does the baby latch on properly while feeding?</span>
+                    <div className="flex gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="yes" {...register('suckingLatchProperly')} className="text-primary" />
+                        <span className="text-sm">Yes</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="no" {...register('suckingLatchProperly')} className="text-primary" />
+                        <span className="text-sm">No</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Question 2 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-md border bg-card gap-2">
+                    <span className="text-sm font-medium">2. Does the baby have any breathing difficulty while feeding?</span>
+                    <div className="flex gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="yes" {...register('suckingBreathingDifficulty')} className="text-primary" />
+                        <span className="text-sm">Yes</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="no" {...register('suckingBreathingDifficulty')} className="text-primary" />
+                        <span className="text-sm">No</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Question 3 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-md border bg-card gap-3">
+                    <div>
+                      <span className="text-sm font-medium">3. How much time does the child take to finish 1 round feed?</span>
+                      <p className="text-xs text-muted-foreground mt-0.5">(ideally 15 to 20 mins every 2 hours)</p>
+                    </div>
+                    <div className="w-full sm:w-64">
+                      <Input
+                        {...register('suckingFeedDuration')}
+                        placeholder="e.g. 15 to 20 mins"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Question 4 */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-md border bg-card gap-2">
+                    <span className="text-sm font-medium">4. Does milk come from the nose (nasal regurgitation) while feeding?</span>
+                    <div className="flex gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="yes" {...register('suckingNasalRegurgitation')} className="text-primary" />
+                        <span className="text-sm">Yes</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" value="no" {...register('suckingNasalRegurgitation')} className="text-primary" />
+                        <span className="text-sm">No</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </FormSection>
           )}
@@ -1530,7 +1843,7 @@ export default function RegisterChildPage() {
                 <h3 className="text-base font-semibold tracking-tight">{title}</h3>
               </div>
             );
-            const reflexLabel = (val?: string) =>
+            const reflexLabel = (val?: string | null) =>
               ({ normal: 'Normal', abnormal: 'Abnormal', cnt: 'CNT' } as Record<string, string>)[val ?? ''] ?? val;
             const earLabel = (val?: string | null) =>
               ({ pass: 'Pass', refer: 'Refer', noisy: 'Noisy', cnt: 'CNT', not_done: 'Not Done' } as Record<string, string>)[val ?? ''] ?? val ?? '—';
@@ -1549,10 +1862,19 @@ export default function RegisterChildPage() {
                   <Row label="MR Records No." value={v.hospitalNumber} />
                   <Row label="POCD Number" value={v.pocdNumber} />
                   <Row label="Unique Mother ID" value={v.uniqueMotherId} />
+                  {v.birthOrder && <Row label="Birth Order" value={v.birthOrder.replace(/_/g, ' ')} />}
                   <Row label="First Name" value={firstNamePrefix === 'bo' ? `B/o ${v.firstName || ''}`.trim() : v.firstName} />
                   <Row label="Last Name" value={v.lastName} />
                   <Row label="Gender" value={v.gender ? v.gender.charAt(0).toUpperCase() + v.gender.slice(1) : undefined} />
                   <Row label="Date of Birth" value={v.dateOfBirth} />
+                  <Row label="Hospital of Birth" value={hospitals.find((h) => h.id === v.hospitalOfBirthId)?.name} />
+                  <Row
+                    label="Staff ID (Assessing)"
+                    value={(() => {
+                      const st = staffList.find((s) => s.id === v.assessingStaffId);
+                      return st ? `${st.employeeId} — ${st.fullName}` : v.assessingStaffId;
+                    })()}
+                  />
                 </div>
 
                 {/* Step 2 — Parent Info */}
@@ -1590,6 +1912,10 @@ export default function RegisterChildPage() {
                   )}
                   <Row label="Father's Name" value={v.fatherName} />
                   <Row label="Mobile Number" value={v.contactNumber} />
+                  <Row
+                    label="WhatsApp Number"
+                    value={whatsappOption === 'same' ? v.contactNumber : whatsappOption === 'not_available' ? 'Not available' : v.whatsappNumber}
+                  />
                   <Row label="Alternate Phone" value={v.phone2} />
                   <Row label="Address" value={v.address} />
                   <Row label="Taluk" value={v.taluk} />
@@ -1611,8 +1937,14 @@ export default function RegisterChildPage() {
                   <Row label="NBS Centre" value={v.nbsCentre} />
                   <Row label="Region" value={v.region ? v.region.charAt(0).toUpperCase() + v.region.slice(1) : undefined} />
                   <Row label="Socio-Economic Status" value={v.socioEconomicStatus?.toUpperCase()} />
-                  <Row label="Religion" value={v.religion ? v.religion.charAt(0).toUpperCase() + v.religion.slice(1) : undefined} />
-                  <Row label="Education Level" value={v.educationLevel?.replace(/_/g, ' ')} />
+                  <Row
+                    label="Religion"
+                    value={v.religion === 'others' ? v.religionOther || 'Others' : v.religion ? v.religion.charAt(0).toUpperCase() + v.religion.slice(1) : undefined}
+                  />
+                  <Row
+                    label="Education Level"
+                    value={v.educationLevel === 'others' ? v.educationLevelOther || 'Others' : v.educationLevel?.replace(/_/g, ' ')}
+                  />
                   <Row label="Delivery Type" value={v.deliveryType ? v.deliveryType.charAt(0).toUpperCase() + v.deliveryType.slice(1) : undefined} />
                   <Row label="No. of Siblings" value={v.noOfSiblings} />
                 </div>
@@ -1642,31 +1974,39 @@ export default function RegisterChildPage() {
                       )}
                     </span>
                   </div>
+                  <Row label="Family History Hearing Loss" value={v.familyHistoryHearingLoss ? 'Yes' : 'No'} />
+                  <Row label="Consanguinity" value={v.consanguinityDegree ? `${v.consanguinityDegree.charAt(0).toUpperCase()}${v.consanguinityDegree.slice(1)} degree` : 'None'} />
                   <Row label="HRR Findings" value={hrrFindings === 'hrr' ? 'HRR (1)' : 'No HRR (0)'} />
-                  <Row label="HRR Remarks" value={v.hrrRemarks} />
+                  {hrrFindings === 'hrr' && v.hrrRemarks && <Row label="HRR Remarks" value={v.hrrRemarks} />}
                   <Row label="Caregiver Concern" value={v.caregiverConcern ? 'Yes' : 'No'} />
-                  {v.craniofacialRemarks && <Row label="Craniofacial Anomaly Details" value={v.craniofacialRemarks} />}
+                  {craniofacialSelected && <Row label="Craniofacial Anomaly Details" value={v.craniofacialRemarks} />}
                 </div>
 
                 {/* Step 5 — Audiologist Assessment */}
                 <SectionHead title="Step 5 — Reflex Assessment" icon="🩺" />
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
-                  <Row
-                    label="Staff ID (Assessing)"
-                    value={(() => {
-                      const st = staffList.find((s) => s.id === v.assessingStaffId);
-                      return st ? `${st.employeeId} — ${st.fullName}` : v.assessingStaffId;
-                    })()}
-                  />
-                  <Row label="Family History Hearing Loss" value={v.familyHistoryHearingLoss ? 'Yes' : 'No'} />
-
-                  <Row label="Consanguinity" value={v.consanguinityDegree} />
                   <Row label="Reflex — Moro/Startle" value={reflexLabel(v.reflexMoro)} />
                   <Row label="Reflex — Rooting" value={reflexLabel(v.reflexRooting)} />
                   <Row label="Reflex — Babinski" value={reflexLabel(v.reflexBabinski)} />
                   <Row label="Reflex — Palmar" value={reflexLabel(v.reflexPalmar)} />
                   <Row label="Reflex — Plantar" value={reflexLabel(v.reflexPlantar)} />
                   <Row label="Reflex — Sucking" value={reflexLabel(v.reflexSucking)} />
+                  <Row
+                    label="Sucking: Latch on properly"
+                    value={v.suckingLatchProperly ? (v.suckingLatchProperly === 'yes' ? 'Yes' : 'No') : undefined}
+                  />
+                  <Row
+                    label="Sucking: Breathing difficulty"
+                    value={v.suckingBreathingDifficulty ? (v.suckingBreathingDifficulty === 'yes' ? 'Yes' : 'No') : undefined}
+                  />
+                  <Row
+                    label="Sucking: Feed duration"
+                    value={v.suckingFeedDuration || undefined}
+                  />
+                  <Row
+                    label="Sucking: Nasal regurgitation"
+                    value={v.suckingNasalRegurgitation ? (v.suckingNasalRegurgitation === 'yes' ? 'Yes' : 'No') : undefined}
+                  />
                 </div>
 
                 {/* Step 6 — Screening */}
@@ -1674,14 +2014,20 @@ export default function RegisterChildPage() {
                 <div className="rounded-lg border border-border bg-card/60 px-4 py-2 space-y-0">
                   <Row label="ENT Findings" value={v.entFindings} />
                   <Row label="BOA Result" value={earLabel(v.boaResult)} />
+                  <Row label="OAE Test" value={v.oaeTestSelection} />
                   <Row label="TEOAE — Right Ear" value={earLabel(v.teoaeRight)} />
                   <Row label="TEOAE — Left Ear" value={earLabel(v.teoaeLeft)} />
                   <Row label="DPOAE — Right Ear" value={earLabel(v.dpoaeRight)} />
                   <Row label="DPOAE — Left Ear" value={earLabel(v.dpoaeLeft)} />
-                  <Row label="AABR 1st — Right Ear" value={earLabel(v.aabr1Right)} />
-                  <Row label="AABR 1st — Left Ear" value={earLabel(v.aabr1Left)} />
-                  <Row label="AABR 2nd — Right Ear" value={earLabel(v.aabr2Right)} />
-                  <Row label="AABR 2nd — Left Ear" value={earLabel(v.aabr2Left)} />
+                  {(() => {
+                    const revOutcome = computeScreeningOutcome(v, highRisk);
+                    return revOutcome.showAabr1 ? (
+                      <>
+                        <Row label="AABR 1st — Right Ear" value={earLabel(v.aabr1Right)} />
+                        <Row label="AABR 1st — Left Ear" value={earLabel(v.aabr1Left)} />
+                      </>
+                    ) : null;
+                  })()}
                   <Row label="CNT Reason" value={v.cntReason} />
                   <div className="flex py-1.5">
                     <span className="w-56 shrink-0 text-xs font-medium text-muted-foreground">Overall Result</span>
@@ -1694,12 +2040,23 @@ export default function RegisterChildPage() {
                       {v.overallResult ? v.overallResult.charAt(0).toUpperCase() + v.overallResult.slice(1) : '—'}
                     </span>
                   </div>
-                  {followUpDate && (
-                    <div className="flex py-1.5">
-                      <span className="w-56 shrink-0 text-xs font-medium text-muted-foreground">Scheduled Follow-up</span>
-                      <span className="text-sm font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700">
-                        📅 {new Date(followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      </span>
+                  {v.overallResult === 'refer' && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2.5 px-3 my-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-amber-900 dark:text-amber-200">Scheduled Re-Screening Date</span>
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          Automatically set to next day. You can change this date before confirming:
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          min={todayLocalISO()}
+                          value={followUpDate}
+                          onChange={(e) => setFollowUpDate(e.target.value)}
+                          className="rounded-md border border-amber-400 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-semibold text-amber-900 dark:text-amber-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1757,25 +2114,7 @@ export default function RegisterChildPage() {
                 <Button
                   type="button"
                   disabled={mutation.isPending || !confirmed}
-                  onClick={handleSubmit(
-                    (d) => {
-                      const demoFields = ['region', 'socioEconomicStatus', 'educationLevel', 'religion'];
-                      const missingFields = demoFields.filter(f => !d[f as keyof FormData]);
-
-                      if (missingFields.length > 0) {
-                        const confirmMsg = "Some socio-demographic details are missing. Are you sure you want to submit without them?";
-                        if (!window.confirm(confirmMsg)) {
-                          return;
-                        }
-                      }
-                      mutation.mutate(d);
-                    },
-                    (errors) => {
-                      console.log('Form validation errors:', errors);
-                      const errorMessages = Object.values(errors).map(e => e?.message).filter(Boolean);
-                      toast.error(`Please fix the errors before submitting: ${errorMessages.join(', ')}`);
-                    }
-                  )}
+                  onClick={() => void onSubmit()}
                   title={!confirmed ? 'Please check the confirmation box above before registering' : undefined}
                 >
                   {mutation.isPending ? 'Saving...' : editId ? 'Save Changes' : 'Register Child'}

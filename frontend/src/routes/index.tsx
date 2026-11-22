@@ -19,6 +19,7 @@ const FollowUpsPage = React.lazy(() => import('../features/follow-ups/FollowUpsP
 const StaffPage = React.lazy(() => import('../features/staff/StaffPage'));
 const ReScreeningPage = React.lazy(() => import('../features/rescreening/ReScreeningPage'));
 const StartReScreeningPage = React.lazy(() => import('../features/rescreening/StartReScreeningPage'));
+const PhoneFollowUpsPage = React.lazy(() => import('../features/follow-ups/PhoneFollowUpsPage'));
 
 const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   <Suspense
@@ -118,6 +119,14 @@ export const router = createBrowserRouter([
             element: (
               <SuspenseWrapper>
                 <StartReScreeningPage />
+              </SuspenseWrapper>
+            ),
+          },
+          {
+            path: 'phone-follow-ups',
+            element: (
+              <SuspenseWrapper>
+                <PhoneFollowUpsPage />
               </SuspenseWrapper>
             ),
           },

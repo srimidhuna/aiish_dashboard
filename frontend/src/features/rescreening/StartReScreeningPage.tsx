@@ -1,9 +1,7 @@
-import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { screeningsService, childrenService, followUpsService, mastersService, staffService } from '../../services/api';
+import { screeningsService, childrenService, followUpsService } from '../../services/api';
 import { useForm } from 'react-hook-form';
-import { useAuth } from '../../hooks/useAuth';
 import { Button } from '../../components/ui/Button';
 import { TestHeader } from '../../components/forms/TestHeader';
 import { RiskFactorChecklist } from '../../components/forms/RiskFactorChecklist';
@@ -20,11 +18,6 @@ interface ReScreeningFormData {
   scheduleFollowUp: boolean;
   followUpDate: string;
   followUpNotes: string;
-  provisionalDiagnosisRight?: string;
-  provisionalDiagnosisLeft?: string;
-  recommendationTypeIds?: string[];
-  recommendationOther?: string;
-  testedBy?: string;
   cntReason?: string;
 }
 
@@ -33,7 +26,7 @@ export default function StartReScreeningPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { register, handleSubmit, watch, setValue, getValues } = useForm<ReScreeningFormData>({
+  const { register, handleSubmit, watch, setValue } = useForm<ReScreeningFormData>({
     defaultValues: {
       aabr2Right: '',
       aabr2Left: '',
@@ -42,8 +35,6 @@ export default function StartReScreeningPage() {
       followUpNotes: 'Re-Screening failed. Diagnostic Evaluation Required.',
     }
   });
-
-  const { user } = useAuth();
 
   const { data: screening, isLoading: isScreeningLoading } = useQuery({
     queryKey: ['screenings', id],
@@ -69,28 +60,6 @@ export default function StartReScreeningPage() {
     (child.assessment?.consanguinityDegree !== undefined)
   ) : false;
 
-  const { data: recommendationTypes } = useQuery({
-    queryKey: ['recommendationTypes'],
-    queryFn: () => mastersService.listRecommendationTypes(),
-  });
-
-  const { data: staffList = [] } = useQuery({
-    queryKey: ['staff'],
-    queryFn: () => staffService.list(),
-  });
-
-  useEffect(() => {
-    if (user && staffList.length > 0) {
-      const currentTestedBy = getValues('testedBy');
-      if (!currentTestedBy) {
-        const staffRec = staffList.find(s => s.email === user.email);
-        if (staffRec) {
-          setValue('testedBy', staffRec.id, { shouldValidate: true });
-        }
-      }
-    }
-  }, [user, staffList, getValues, setValue]);
-
   const mutation = useMutation({
     mutationFn: async (data: ReScreeningFormData) => {
       if (!screening) throw new Error('Screening not loaded');
@@ -107,22 +76,13 @@ export default function StartReScreeningPage() {
 
       if (!isPass && data.scheduleFollowUp && data.followUpDate) {
         // Create Follow Up
-        let finalNotes = data.followUpNotes || 'Re-Screening failed. Diagnostic Evaluation Required.';
-        if (data.recommendationOther) {
-          finalNotes += `\nOther Recommendations: ${data.recommendationOther}`;
-        }
-        if (data.testedBy) {
-          finalNotes += `\nTested by: ${data.testedBy}`;
-        }
+        const finalNotes = data.followUpNotes || 'Re-Screening failed. Diagnostic Evaluation Required.';
 
         await followUpsService.create({
           childId: screening.childId,
           followUpType: 'regular',
           scheduledDate: new Date(data.followUpDate).toISOString(),
           notes: finalNotes,
-          provisionalDiagnosisRight: data.provisionalDiagnosisRight,
-          provisionalDiagnosisLeft: data.provisionalDiagnosisLeft,
-          recommendationTypeIds: data.recommendationTypeIds,
         });
 
         // Update Baby Status
@@ -395,74 +355,6 @@ export default function StartReScreeningPage() {
             )}
           </div>
         )}
-          <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-6 animate-in fade-in slide-in-from-top-2">
-            <h3 className="text-lg font-semibold border-b pb-2">Provisional Diagnosis & Recommendations</h3>
-            
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Provisional Diagnosis : Right Ear</label>
-                <input
-                  type="text"
-                  {...register('provisionalDiagnosisRight')}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Provisional Diagnosis : Left Ear</label>
-                <input
-                  type="text"
-                  {...register('provisionalDiagnosisLeft')}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Recommendation</label>
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                {recommendationTypes?.map((rec) => (
-                  <div key={rec.id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={`rec-${rec.id}`}
-                      value={rec.id}
-                      {...register('recommendationTypeIds')}
-                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    <label htmlFor={`rec-${rec.id}`} className="text-sm font-medium leading-none">
-                      {rec.label}
-                    </label>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2">
-                <label className="text-sm font-medium">Others (Specify)</label>
-                <input
-                  type="text"
-                  {...register('recommendationOther')}
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Specify other recommendations"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-2 pt-4 border-t">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Tested By</label>
-                <select
-                  {...register('testedBy')}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">-- Select Staff --</option>
-                  {staffList.filter((s) => s.status !== 'deleted').map((s) => (
-                    <option key={s.id} value={s.fullName}>
-                      {s.employeeId} — {s.fullName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
 
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={mutation.isPending || !isComplete} className="px-8">

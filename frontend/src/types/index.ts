@@ -91,6 +91,10 @@ export interface AudiologistAssessment {
   reflexPalmar?: ReflexResult;
   reflexPlantar?: ReflexResult;
   reflexSucking?: ReflexResult;
+  suckingLatchProperly?: string;
+  suckingBreathingDifficulty?: string;
+  suckingFeedDuration?: string;
+  suckingNasalRegurgitation?: string;
 }
 
 export interface Child {
@@ -98,6 +102,7 @@ export interface Child {
   hospitalNumber: string; // maps to backend mrNumber
   pocdNumber?: string;
   uniqueMotherId?: string;
+  birthOrder?: string;
 
   firstName: string;
   lastName: string;

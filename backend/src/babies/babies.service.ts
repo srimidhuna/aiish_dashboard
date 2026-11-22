@@ -109,14 +109,41 @@ export class BabiesService {
     return { exists: matches.length > 0, matches };
   }
 
+  private getTodayDatePrefix(): string {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).formatToParts(new Date());
+
+    const day = parts.find((p) => p.type === 'day')?.value ?? '01';
+    const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+    const year = parts.find((p) => p.type === 'year')?.value ?? '2026';
+    return `${day}${month}${year}`;
+  }
+
   async getNextPocdNumber() {
-    const currentYear = new Date().getFullYear();
-    const counter = await this.prisma.pocdCounter.findUnique({
-      where: { year: currentYear },
+    const datePrefix = this.getTodayDatePrefix();
+    const lastBaby = await this.prisma.baby.findFirst({
+      where: {
+        pocdNumber: { startsWith: datePrefix },
+      },
+      orderBy: { pocdNumber: 'desc' },
+      select: { pocdNumber: true },
     });
-    const nextCount = (counter?.count ?? 0) + 1;
-    const paddedCount = String(nextCount).padStart(4, '0');
-    return `${currentYear}${paddedCount}`;
+
+    let nextCount = 1;
+    if (lastBaby?.pocdNumber && lastBaby.pocdNumber.startsWith(datePrefix)) {
+      const suffix = lastBaby.pocdNumber.slice(datePrefix.length);
+      const parsed = parseInt(suffix, 10);
+      if (!Number.isNaN(parsed)) {
+        nextCount = parsed + 1;
+      }
+    }
+
+    const paddedCount = String(nextCount).padStart(3, '0');
+    return `${datePrefix}${paddedCount}`;
   }
 
   async create(dto: CreateBabyDto, createdById: string) {
@@ -140,17 +167,33 @@ export class BabiesService {
       throw new ConflictException('A child record with these exact details already exists.');
     }
 
-    const currentYear = new Date().getFullYear();
+    const datePrefix = this.getTodayDatePrefix();
 
     const baby = await this.prisma.$transaction(async (tx) => {
-      const counter = await tx.pocdCounter.upsert({
-        where: { year: currentYear },
-        update: { count: { increment: 1 } },
-        create: { year: currentYear, count: 1 },
+      const lockKey = parseInt(datePrefix, 10);
+      if (!Number.isNaN(lockKey)) {
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
+      }
+
+      const lastBaby = await tx.baby.findFirst({
+        where: {
+          pocdNumber: { startsWith: datePrefix },
+        },
+        orderBy: { pocdNumber: 'desc' },
+        select: { pocdNumber: true },
       });
 
-      const paddedCount = String(counter.count).padStart(4, '0');
-      const generatedPocdNumber = `${currentYear}${paddedCount}`;
+      let nextCount = 1;
+      if (lastBaby?.pocdNumber && lastBaby.pocdNumber.startsWith(datePrefix)) {
+        const suffix = lastBaby.pocdNumber.slice(datePrefix.length);
+        const parsed = parseInt(suffix, 10);
+        if (!Number.isNaN(parsed)) {
+          nextCount = parsed + 1;
+        }
+      }
+
+      const paddedCount = String(nextCount).padStart(3, '0');
+      const generatedPocdNumber = `${datePrefix}${paddedCount}`;
 
       return tx.baby.create({
         data: {

@@ -27,14 +27,30 @@ import { UpdateFollowUpDto } from '@/follow-up/dto/update-follow-up.dto';
 import { QueryFollowUpDto } from '@/follow-up/dto/query-follow-up.dto';
 import { UpdateStatusDto } from '@/follow-up/dto/update-status.dto';
 import { RescheduleDto } from '@/follow-up/dto/reschedule.dto';
+import { LogPhoneCallDto } from '@/follow-up/dto/log-phone-call.dto';
 
 @ApiTags('follow-up')
 @ApiCookieAuth('access_token')
 @Controller({ path: 'follow-up', version: '1' })
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@Roles('admin', 'doctor', 'audiologist')
 export class FollowUpController {
   constructor(private readonly followUpService: FollowUpService) {}
+
+  @Get('phone-surveillance')
+  @ApiOperation({ summary: 'List babies for 6-month HRR phone follow-up surveillance' })
+  @ApiOkResponse({ description: 'Array of phone surveillance patients' })
+  getPhoneSurveillance(@CurrentUser() user: JwtPayload) {
+    const hospitalId = user.role === 'audiologist' && user.hospitalId ? user.hospitalId : undefined;
+    return this.followUpService.getPhoneSurveillanceList(hospitalId);
+  }
+
+  @Post('log-phone-call')
+  @ApiOperation({ summary: 'Log a 6-month phone surveillance follow-up call' })
+  @ApiOkResponse({ description: 'Updated follow-up' })
+  logPhoneCall(@Body() dto: LogPhoneCallDto, @CurrentUser() user: JwtPayload) {
+    return this.followUpService.logPhoneCall(dto, user.sub);
+  }
 
   @Get()
   @ApiOperation({ summary: 'List follow-ups (filterable) — admin only' })

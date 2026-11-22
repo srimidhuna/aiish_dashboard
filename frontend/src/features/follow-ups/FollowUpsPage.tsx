@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { followUpsService, childrenService, screeningsService } from '../../services/api';
 import type { FollowUp, Screening } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -24,11 +24,10 @@ export default function FollowUpsPage() {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedFollowUp, setSelectedFollowUp] = useState<any>(null);
+  const [isCompleteMode, setIsCompleteMode] = useState(false);
 
   const [childDetailsOpen, setChildDetailsOpen] = useState(false);
   const [selectedChildForDetails, setSelectedChildForDetails] = useState<any>(null);
-
-  const queryClient = useQueryClient();
 
   const { data: followUps, isLoading } = useQuery({
     queryKey: ['followUps', 'all'],
@@ -45,16 +44,7 @@ export default function FollowUpsPage() {
     queryFn: () => screeningsService.list({ type: 'rescreening', status: 'scheduled' }),
   });
 
-  const updateStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: FollowUp['status'] }) =>
-      followUpsService.updateStatus(id, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['followUps'] });
-      queryClient.invalidateQueries({ queryKey: ['timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-overview'] });
-      toast.success('Status updated.');
-    },
-  });
+
 
 
 
@@ -159,11 +149,19 @@ export default function FollowUpsPage() {
 
   const openEditDialog = (f: any) => {
     setSelectedFollowUp(f);
+    setIsCompleteMode(false);
+    setDialogOpen(true);
+  };
+
+  const openCompleteDialog = (f: any) => {
+    setSelectedFollowUp(f);
+    setIsCompleteMode(true);
     setDialogOpen(true);
   };
 
   const openCreateDialog = () => {
     setSelectedFollowUp(null);
+    setIsCompleteMode(false);
     setDialogOpen(true);
   };
 
@@ -416,21 +414,21 @@ export default function FollowUpsPage() {
                       <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                         {(f.status === 'scheduled' || f.status === 'rescheduled') && (
                           <Button
-                            variant="outline"
                             size="sm"
-                            onClick={() => updateStatus.mutate({ id: f.id, status: 'completed' })}
+                            onClick={() => openCompleteDialog(f)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
                           >
-                            Complete
+                            Conduct Evaluation
                           </Button>
                         )}
                         <Button 
-                          variant="ghost" 
+                          variant="outline" 
                           size="sm" 
                           onClick={() => openEditDialog(f)}
                           disabled={followUps?.some(x => x.childId === f.childId && x.status === 'rescheduled')}
                           title={followUps?.some(x => x.childId === f.childId && x.status === 'rescheduled') ? 'Already rescheduled once' : ''}
                         >
-                          Reschedule Visit
+                          Edit / Reschedule
                         </Button>
 
                       </td>
@@ -447,6 +445,7 @@ export default function FollowUpsPage() {
         isOpen={dialogOpen}
         onClose={() => setDialogOpen(false)}
         initialData={selectedFollowUp}
+        isCompleteMode={isCompleteMode}
       />
 
       <ChildDetailsDialog

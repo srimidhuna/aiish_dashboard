@@ -81,6 +81,14 @@ export class UpdateBabyDto {
   deliveryType?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) noOfSiblings?: number;
 
+  // Mirrors CreateBabyDto — without these, forbidNonWhitelisted rejects every edit that
+  // carries the assessing staff or an "Others (specify)" value.
+  @ApiPropertyOptional() @IsOptional() @IsString() assessingStaffId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() assessingStaffEmployeeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() assessingStaffName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() educationLevelOther?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() religionOther?: string;
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

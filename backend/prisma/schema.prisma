@@ -203,6 +203,10 @@ model AudiologistAssessment {
   hrrRemarks               String?              @map("hrr_remarks")
   craniofacialRemarks      String?              @map("craniofacial_remarks")
   reflexSucking            ReflexResult?        @map("reflex_sucking")
+  suckingLatchProperly       String?              @map("sucking_latch_properly")
+  suckingBreathingDifficulty String?              @map("sucking_breathing_difficulty")
+  suckingFeedDuration        String?              @map("sucking_feed_duration")
+  suckingNasalRegurgitation  String?              @map("sucking_nasal_regurgitation")
   baby                     Baby                 @relation(fields: [babyId], references: [id])
 
   @@map("audiologist_assessments")
